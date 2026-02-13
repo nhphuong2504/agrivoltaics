@@ -9,4 +9,5 @@ shap>=0.42.0
 tensorflow>=2.13.0
 
 statsmodels
+pygam>=0.9.0
 
