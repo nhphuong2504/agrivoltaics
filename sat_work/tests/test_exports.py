@@ -2,19 +2,25 @@
 Contract tests for the saturation FLAGS DATA PRODUCT.
 
 These are not about detector accuracy. They guard the interface that downstream work
-consumes: the published saturation_flags.csv ships a continuous `deficit` column and
-three per-pair flag columns, and a consumer will happily .mean(), .sum() or regress on
-them.
+consumes: the canonical `saturation_flags.csv` ships a continuous `deficit` column and
+per-pair flag columns, and a consumer will happily .mean(), .sum() or regress on them.
 
-Two real defects are documented here:
-  * the SHIPPED published csv contains 5,373 `-inf` values in the deficit columns, from
-    `1 - s/(g0*cap*ref)` when ref == 0 and s > 0 (dawn/dusk). Flags are 0 there, so the
-    defect is invisible to any flag-level check but poisons any aggregate.
-  * the vat-v1 export used to publish `null_d` at ref ~ 0, where the per-bin null is
-    meaningless.
+The canonical artefact has been the vat-v1 export since 2026-09 (review section 5). Two
+defects are recorded here:
 
-Refactoring note: the export is built by `bench.build_export()`, a pure function, so
-these tests never depend on a stale file on disk.
+  * the ORIGINAL published artefact contained 5,373 `-inf` values in the deficit columns,
+    from `1 - s/(g0*cap*ref)` when ref == 0 and s > 0 (dawn/dusk). Flags are 0 there, so
+    the defect was invisible to any flag-level check but poisoned any aggregate. Fixed by
+    the vat-v1 regeneration (review section 3.9).
+
+  * even under vat-v1 the deficit column carries a large NEGATIVE tail below the gate,
+    where `theta(t)*ref` approaches zero, reaching about -260. It is confined to
+    ref < 0.3 and can never influence a flag, but it is the reason the physical-bound
+    test below is scoped to the decision domain rather than the whole column.
+
+Refactoring note: the export is built by `bench.build_export()`, a pure function, so most
+tests here never depend on a file on disk. The ones that DO assert on the shipped artefact
+say so explicitly.
 """
 from __future__ import annotations
 
@@ -23,27 +29,38 @@ import os.path
 import numpy as np
 import pandas as pd
 
-from _helpers import EXPORT_CSV, PUBLISHED_CSV, bench, known_failure
+from _helpers import CANONICAL_CSV, PUBLISHED_V1_COLUMNS, bench
 
 PAIR_KEYS = [f"{a}_{b}" for a, b in bench.PAIRS]
 TIERS = ("moderate", "severe", "conservative")
 
 
-def _shipped():
-    if not os.path.exists(PUBLISHED_CSV):
-        raise AssertionError(f"published flags file not found: {PUBLISHED_CSV}")
-    return pd.read_csv(PUBLISHED_CSV)
+def _canonical():
+    """The canonical flags artefact ON DISK -- the file a consumer actually reads."""
+    if not os.path.exists(CANONICAL_CSV):
+        raise AssertionError(
+            f"canonical flags file not found: {CANONICAL_CSV}\n"
+            f"regenerate it with: python sat_work/research/recommended.py")
+    return pd.read_csv(CANONICAL_CSV)
 
 
 # --------------------------------------------------------------------------- #
 # schema / backwards compatibility
 # --------------------------------------------------------------------------- #
-def test_export_is_a_schema_superset_of_the_published_file():
-    """Existing consumers must keep working: every published column must survive."""
-    published = set(_shipped().columns)
+def test_export_is_a_schema_superset_of_the_published_v1_schema():
+    """Existing consumers must keep working: every published v1 column must survive.
+
+    Asserted against the FROZEN column list, not against the file on disk. Now that the
+    canonical file is produced by a different method, deriving "the published schema" from
+    it would be circular -- the contract would hold by construction and test nothing.
+    """
     exported = set(bench.build_export().columns)
-    missing = published - exported
-    assert not missing, f"export drops published columns: {sorted(missing)}"
+    missing = set(PUBLISHED_V1_COLUMNS) - exported
+    assert not missing, f"export drops published v1 columns: {sorted(missing)}"
+    # and the artefact on disk must actually be the export it claims to be
+    assert set(_canonical().columns) == exported, (
+        "canonical file columns differ from build_export() -- the file is stale; "
+        "re-run sat_work/research/recommended.py")
 
 
 def test_export_covers_every_pair_and_has_the_right_length():
@@ -81,33 +98,63 @@ def test_export_deficit_is_finite_or_nan():
         assert len(bad) == 0, f"{k}_deficit has {len(bad)} non-finite values"
 
 
-def test_shipped_flags_csv_contains_no_infinities():
-    """FIXED 2026-09 (step20): the shipped artifact is now safe for aggregation.
+def test_canonical_flags_csv_contains_no_infinities():
+    """The canonical artefact must be safe for .mean() / .sum() / regression.
 
-    Was 5,373 `-inf` values across the three `eu_*_deficit` columns, on 2,807 rows, all at
-    dawn/dusk where ref == 0 so `g0*cap*ref == 0` while the pair sum is positive. Repaired
-    to NaN; every affected row is at ref == 0, far below the 0.7 gate, so no flag could
-    ever have fired there and the flag columns are unchanged. The original file is kept as
-    `saturation_flags.published_backup.csv`.
+    The published artefact shipped 5,373 `-inf` values (review section 3.9). The vat-v1
+    export cannot reproduce them: `theta(t)` is a rolling median of `s/ref` and is
+    strictly positive wherever it is defined, so `1 - s/(theta*ref)` stays finite.
     """
-    num = _shipped().select_dtypes("number")
+    num = _canonical().select_dtypes("number")
     n_inf = int(np.isinf(num.to_numpy()).sum())
-    assert n_inf == 0, f"{n_inf} infinite values in {os.path.basename(PUBLISHED_CSV)}"
+    assert n_inf == 0, f"{n_inf} infinite values in {os.path.basename(CANONICAL_CSV)}"
 
 
-@known_failure("shipped published deficit columns are seasonally mis-scaled by up to 0.50 "
-               "(review section 3.10)")
-def test_shipped_deficit_is_unbiased_on_control_pairs_in_winter():
-    """KNOWN FAILURE - the continuous published column is wrong in winter.
+def test_canonical_deficit_is_well_formed_inside_the_decision_domain():
+    """Inside the gate the published deficit column must be a sane, bounded severity.
 
-    On an independent pair, in December, the published deficit reaches -0.44 to -0.49
-    while the physical truth is ~0.0. Same magnitude as the summer error, opposite sign.
+    `deficit = 1 - s/(theta*ref)` is >= 1 only when s <= 0 and <= 1 by construction, so
+    inside the decision domain it belongs to [-1, 1]. It has to be checked HERE rather
+    than over the whole column because below the gate `theta*ref` approaches zero and the
+    ratio blows up -- the below-gate tail reaches about -260, which is exactly why the
+    bound is scoped to the domain where the detector actually decides.
+
+    Measured in-gate: min -0.141, max 1.0000 across the three pairs. The published
+    formulation violated this even in-gate (its deficit reached -0.49 in December on a
+    control pair, review section 3.10).
     """
-    shipped = _shipped()
-    shipped["time"] = pd.to_datetime(shipped["time"])
-    dec = shipped["time"].dt.month == 12
-    col = shipped.loc[dec, "eu_8_eu_16_deficit"]
-    assert col.min() > -0.20, f"published December deficit reaches {col.min():.3f}"
+    can = _canonical()
+    inside = can["ref"] >= bench.REF_ON
+    assert inside.sum() > 10_000, "expected a substantial in-gate region"
+    for key in PAIR_KEYS:
+        col = can.loc[inside, f"{key}_deficit"].dropna()
+        assert len(col) > 1_000, f"{key}_deficit is empty inside the gate"
+        assert col.min() >= -1.0, (
+            f"{key}_deficit is {col.min():.3f} inside the gate -- below the physical "
+            f"floor of -1, so the baseline is under-predicting there")
+        assert col.max() <= 1.0 + 1e-9, (
+            f"{key}_deficit is {col.max():.3f} inside the gate -- above the ceiling of 1")
+
+
+def test_canonical_deficit_tail_is_confined_below_the_gate():
+    """Documents the residual defect so it is never mistaken for valid data.
+
+    Any deficit beyond the physical range must sit at low irradiance, where no flag can
+    be set and where `deficit` is not a meaningful severity. If this ever fails, the tail
+    has leaked into the decision domain and is corrupting the flags.
+    """
+    can = _canonical()
+    for key in PAIR_KEYS:
+        col = can[f"{key}_deficit"]
+        beyond = col < -1.0
+        if not beyond.any():
+            continue
+        worst_ref = can.loc[beyond, "ref"].max()
+        assert worst_ref < 0.5, (
+            f"{key}_deficit goes below -1 at ref {worst_ref:.3f} -- the tail has moved "
+            f"into the decision domain")
+        flagged = int((can.loc[beyond, f"{key}_sat_moderate"] == 1).sum())
+        assert flagged == 0, f"{key}: {flagged} pathological rows are flagged"
 
 
 # --------------------------------------------------------------------------- #

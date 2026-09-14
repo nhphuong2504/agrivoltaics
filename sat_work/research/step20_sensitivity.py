@@ -8,16 +8,14 @@ STEP 20 - the two loose ends from the audit, closed.
     the corrected baseline, the doc's claim that the cutoff is not delicate would need
     qualifying. Recompute it for both detectors.
 
-(2) The shipped saturation_flags.csv still contains 5,373 -inf values (all in the
-    <pair>_deficit columns, at ref == 0 where expected is 0 while s > 0). The original
-    doc DISCLOSES this and tells readers to filter ref >= 0.7 first, so it is documented
-    rather than hidden -- but the values are still in the file, where they poison any
-    .mean()/.sum()/.regression that does not honour the warning. Repair it to NaN, which
-    is what the review prescribes, and report exactly what changed.
+(2) The -inf values this step originally repaired are now RETIRED rather than repaired: the
+    canonical saturation_flags.csv is the vat-v1 export (recommended.py), whose baseline
+    structurally cannot produce them. This part is kept as a guard -- it verifies the file
+    on disk is clean and reports nothing to do when it is. Re-run after any regeneration.
 
 Run:  ./venv/Scripts/python.exe sat_work/research/step20_sensitivity.py
 """
-import sys, io, os, shutil, warnings
+import sys, io, os, warnings
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 warnings.filterwarnings("ignore")
 import numpy as np, pandas as pd
@@ -76,51 +74,37 @@ print("   corrected baseline. Its 0.15 row is simply ~18-23 % lower in levels.")
 # --------------------------------------------------------------------------- #
 print()
 print("=" * 100)
-print("(2) REPAIRING THE SHIPPED saturation_flags.csv")
+print("(2) THE CANONICAL saturation_flags.csv  (was: repairing the -inf values)")
 print("=" * 100)
 src = os.path.join(ROOT, "saturation_flags.csv")
-bak = os.path.join(ROOT, "saturation_flags.published_backup.csv")
 d = pd.read_csv(src)
 num = d.select_dtypes("number")
-before = int(np.isinf(num.to_numpy()).sum())
-neg_before = int(np.isneginf(num.to_numpy()).sum())
+n_inf = int(np.isinf(num.to_numpy()).sum())
 
-if before == 0:
-    print("   nothing to do - no infinite values present")
+if n_inf == 0:
+    n_neg = int(np.isneginf(num.to_numpy()).sum())
+    print(f"   {os.path.basename(src)}: {len(d):,} rows, {n_neg} infinite values -- clean")
+    print("   The vat-v1 baseline cannot produce them, so this is the expected result.")
 else:
-    if not os.path.exists(bak):
-        shutil.copy2(src, bak)
-        print(f"   backup written: {os.path.basename(bak)}")
-    else:
-        print(f"   backup already exists: {os.path.basename(bak)}")
-    fixed = d.replace([np.inf, -np.inf], np.nan)
-    fixed.to_csv(src, index=False)
-    num2 = fixed.select_dtypes("number")
-    print(f"   infinities: {before} -> {int(np.isinf(num2.to_numpy()).sum())}  "
-          f"(-inf specifically: {neg_before} -> {int(np.isneginf(num2.to_numpy()).sum())})")
-    print("   where the -inf values were:")
+    # This should be unreachable. If it fires, the canonical file was produced by the
+    # retired published method (or regenerated with a broken export) -- do NOT patch it
+    # here, because a silently-patched artefact would hide a failed regeneration.
+    print(f"   FAIL: {n_inf} infinite values found in {os.path.basename(src)}")
     for c in num.columns:
         n = int(np.isinf(num[c].to_numpy()).sum())
         if n:
-            print(f"      {c}: {n} values -> NaN")
-    print("\n   WHY THIS IS SAFE: every -inf sat at ref == 0 (night), where the gate is")
-    print("   ref >= 0.7, so no flag could ever fire on those rows. The flag columns are")
-    print("   byte-identical; only the continuous deficit columns change, and only on rows")
-    print("   the doc already told readers to exclude. Verified below.")
-    chk = pd.read_csv(bak)
-    flags = [c for c in chk.columns if c.endswith(("_sat_moderate", "_sat_severe"))]
-    same = all((chk[c].to_numpy() == fixed[c].to_numpy()).all() for c in flags)
-    print(f"      flag columns identical after repair: {same}")
-    inf_rows = np.isneginf(chk[num.columns].to_numpy()).any(axis=1)
-    print(f"      ref on the affected rows: max {chk.loc[inf_rows, 'ref'].max():.4f} "
-          f"(gate is {B.REF_ON})")
+            print(f"      {c}: {n}")
+    print("   The canonical file should be the vat-v1 export. Re-run:")
+    print("      ./venv/Scripts/python.exe sat_work/research/recommended.py")
+    sys.exit(1)
 
 # --------------------------------------------------------------------------- #
 print()
 print("=" * 100)
-print("(3) THE REGRESSION SUITE SHOULD NOW FLIP TWO XFAILS")
+print("(3) THE REGRESSION SUITE")
 print("=" * 100)
-print("test_exports.test_shipped_flags_csv_contains_no_infinities asserts the FIXED")
-print("condition, so repairing the file should turn that XFAIL into a PASS. Run:")
-print("   ./venv/Scripts/python.exe sat_work/tests/run_tests.py")
-print("If it reports XPASS, remove the known_failure marker and note the fix in the review.")
+print("The -inf guard was folded into the canonical-file checks (test_exports) and passes.")
+print("The seasonal mis-scaling guard moved to test_detectors, where it scores the published")
+print("METHOD from frozen code instead of a retired output file. One xfail remains -- the")
+print("published detector's control-pair bias -- which is real and unfixed by design.")
+print("Run:  ./venv/Scripts/python.exe sat_work/tests/run_tests.py")

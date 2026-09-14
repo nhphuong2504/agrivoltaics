@@ -1,13 +1,22 @@
-"""Does the corrected detector change the published *conclusions*?"""
-import sys, io, warnings
+"""Does the corrected detector change the published *conclusions*?
+
+Compares the published detector against the CANONICAL artefact (repo-root
+`saturation_flags.csv`, vat-v1 since 2026-09). The canonical file is written by
+`recommended.py`; the published method is reproduced live from `satsim.detect`, so this
+script never depends on a retired copy of the old output.
+"""
+import sys, io, os, warnings
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 warnings.filterwarnings("ignore")
 import numpy as np, pandas as pd
-sys.path.insert(0, r"c:\Users\nhphuong\Desktop\Solar\all_data\sat_work\research")
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(os.path.dirname(_HERE))
+sys.path.insert(0, _HERE)
 from satsim import *
 
-f2 = pd.read_csv(r"c:\Users\nhphuong\Desktop\Solar\all_data\sat_work\research\saturation_flags_v2.csv",
-                 parse_dates=["time"]).set_index("time")
+CANONICAL = os.path.join(_ROOT, "saturation_flags.csv")
+f2 = pd.read_csv(CANONICAL, parse_dates=["time"]).set_index("time")
 df = load(); FE = preprocess(df); dayidx = FE["dayidx"]
 
 print("=" * 78)

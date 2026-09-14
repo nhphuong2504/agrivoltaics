@@ -8,16 +8,24 @@ cannot catch the failure that matters, because its control pairs are never clipp
 detector whose baseline is mis-calibrated on *intermittently* clipped pairs passes
 cleanly. Every test below therefore runs against manufactured ground truth.
 
-Two tests are deliberately written to FAIL today:
+One test is deliberately written to FAIL today:
   * `test_published_detector_is_biased_on_control_pairs` documents the published defect
-  * `test_shipped_flags_csv_contains_infinities` documents a bug in a shipped artefact
-They are marked `known_failure`, so they report as XFAIL and will flip to a pass when
-the underlying issue is fixed. Do not delete them -- they are the guard rails.
+It is marked `known_failure`, so it reports as XFAIL and will flip to a pass when the
+underlying issue is fixed. Do not delete it -- it is a guard rail.
+
+The two data-product defects that used to be recorded in test_exports are both resolved:
+the `-inf` values by the vat-v1 regeneration, and the seasonal mis-scaling of the
+continuous column by the fact that the canonical file is no longer produced by the
+published method (see `test_published_baseline_is_seasonally_mis_scaled_...` below, which
+keeps the published defect itself under test).
 
 Numbers quoted in assertions are the values measured when this suite was frozen. Each
 has headroom; they are regression bands, not exact-value checks.
 """
 from __future__ import annotations
+
+import numpy as np
+import pandas as pd
 
 from _helpers import (EPISODIC_PAIRS, bench, chronic, intermittent, known_failure,
                       noclip, score)
@@ -192,6 +200,43 @@ def test_published_detector_is_biased_on_control_pairs():
     """
     fp = score(noclip(), D0)["fp_rows"]
     assert fp < 20, f"published detector flagged {fp} rows on a pair that cannot saturate"
+
+
+def test_published_baseline_is_seasonally_mis_scaled_and_the_corrected_one_is_not():
+    """The mechanism behind review sections 3.2 / 3.10, as a machine-checked contrast.
+
+    Control pairs cannot saturate, so their true deficit is ~0 and any non-zero value is
+    pure baseline error. In December the published `g0*cap(t)*ref` falls off a seasonal
+    cliff: `cap(t)` tracks the physical peak (10.3 MW in Dec vs 16.5 MW in Jun) while the
+    true slope `theta` barely moves, so `expected` collapses and the published deficit
+    reports an intact pair as roughly 45 % short. `theta(t)` tracks the level, so it does
+    not. Measured at ref >= 0.5 (n=285, the most robust December slice available):
+
+        published  -0.44 / -0.48 / -0.44        vat-v1  ~ 0.00
+
+    This is the continuous-column defect that the published flag-level validation could
+    not see. Relocated here from test_exports: once the canonical file became the vat-v1
+    output it no longer contained a published column to assert against, and the subject
+    of this test is the METHOD, not the data product.
+    """
+    df = bench.raw_df()
+    fe = bench.raw_fe()
+    ref = fe["ref"]
+    dec = pd.Series(df.index.month == 12, index=df.index) & (ref >= 0.5)
+    assert int(dec.sum()) >= 100, "December slice is too small to guard anything"
+
+    for a, b in bench.CONTROL_PAIRS:
+        pub = pd.Series(np.asarray(bench.detect(df, fe, a, b)["deficit"], dtype=float),
+                        index=df.index)
+        vat = bench.pair_deficit(df, fe, a, b)["deficit"]
+        pm, vm = pub[dec].median(), vat[dec].median()
+        assert pm < -0.35, (
+            f"published December deficit on {a}+{b} is {pm:+.3f} -- the seasonal bias has "
+            f"gone; if the baseline really was replaced, retire this test")
+        assert vm > -0.05, (
+            f"vat-v1 December deficit on {a}+{b} is {vm:+.3f} -- the seasonal bias is back")
+        assert abs(vm) < 0.2 * abs(pm), (
+            f"{a}+{b}: vat-v1 error {vm:+.4f} is not clearly better than published {pm:+.4f}")
 
 
 # --------------------------------------------------------------------------- #

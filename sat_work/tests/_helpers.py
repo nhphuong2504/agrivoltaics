@@ -54,8 +54,22 @@ def known_failure(reason):
 # Convenience re-exports so tests import from one place.
 import bench as bench  # noqa: E402
 
-PUBLISHED_CSV = os.path.join(_ROOT, "saturation_flags.csv")
-EXPORT_CSV = os.path.join(_RESEARCH, "saturation_flags_v2.csv")
+# THE CANONICAL FLAGS ARTEFACT. Since 2026-09 this is the vat-v1 export: it is written by
+# research/recommended.py and is the file downstream consumers read.
+CANONICAL_CSV = os.path.join(_ROOT, "saturation_flags.csv")
+
+# The schema the ORIGINAL published v1 artefact shipped, frozen here as a literal.
+#
+# This has to be a constant rather than read back from the file on disk. Now that the
+# canonical file is produced by a different method, deriving "the published schema" from
+# it would be circular -- the backwards-compatibility contract would be satisfied by
+# construction and would stop testing anything. Pinning the published column list keeps
+# the guarantee meaningful.
+PUBLISHED_V1_COLUMNS = (
+    "time", "ref", "dq_site_outage",
+    *(f"{a}_{b}_{suffix}" for a, b in bench.PAIRS
+      for suffix in ("deficit", "sat_moderate", "sat_severe")),
+)
 
 
 # --------------------------------------------------------------------------- #

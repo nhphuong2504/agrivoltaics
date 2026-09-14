@@ -271,10 +271,11 @@ Two by-products of the same dig:
 * 74 of the 510 disputed July rows were not about thresholds at all: vat-v1's deficit did
   exceed 0.15 and the strict 3-sample rule broke the run (see §3.7).
 
-### 3.9 The shipped flags file contained 5,373 `-inf` values — **now repaired**
+### 3.9 The published flags file contained 5,373 `-inf` values — **eliminated**
 
-`saturation_flags.csv` publishes `eu_*_deficit` as a continuous column. It contained
-**5,373 infinite values** (all `-inf`) across **2,807 rows**, in all three deficit columns:
+The published `saturation_flags.csv` published `eu_*_deficit` as a continuous column and
+contained **5,373 infinite values** (all `-inf`) across **2,807 rows**, in all three deficit
+columns:
 
 ```
 2025-05-01 06:35:00,0.0,0,-inf,0,0,-inf,0,0,-inf,0,0
@@ -287,22 +288,43 @@ pair sum is still positive, giving `−inf`. The flags are correctly `0` on thos
 `pandas.read_csv` parses `-inf` as `float('-inf')`, so any downstream `.mean()`, `.sum()`,
 regression or plot on that column is poisoned. I tripped over it in my own aggregate.
 
-**Repaired 2026-09** (`step20`): the values are now `NaN`. Every affected row sits at
-`ref = 0.0000`, seven hundred times below the gate, so no flag could ever have fired there —
-verified that the `*_sat_moderate` / `*_sat_severe` columns are **byte-identical** after the
-repair. Only the continuous deficit columns change, and only on rows the original document
-already told readers to exclude. The original file is preserved as
-`saturation_flags.published_backup.csv` for provenance, and the regression test that
-documented the defect now asserts the fixed condition and passes.
+**Eliminated 2026-09, structurally.** Two independent changes close it:
 
-One caveat, now closed: the *notebook* is the generator that would reintroduce `-inf`.
-Its export cell (cell 25) has been patched at the source, so
-`out[f'{k}_deficit'] = …replace([np.inf, -np.inf], np.nan).round(4)`. A fresh run now
-produces a clean file, and the notebook is tracked by git so the fix is versioned. Note
-that the notebook's saved outputs are now stale relative to its source until it is re-run;
-re-running is safe (it reproduces the same flags and a `-inf`-free deficit column).
+1. The canonical artefact is now the vat-v1 export (§5). `deficit = 1 − s/(θ(t)·ref)` with
+   `θ(t)` a rolling median of `s/ref`, strictly positive wherever it is defined, so the
+   expression cannot be infinite. The count on the canonical file is now **0**, enforced by
+   `test_exports.test_canonical_flags_csv_contains_no_infinities`.
+2. The notebook that generated the old file is fixed at the source (cell 25:
+   `…replace([np.inf, -np.inf], np.nan)`), so re-running the *published* method also yields a
+   finite column. The notebook is committed, so the fix is versioned.
 
-### 3.10 The continuous `deficit` column is seasonally mis-scaled by up to 0.50
+The original published file is **not** kept as a parallel artefact. It is reproducible from
+`bench.det_published()` and from the committed notebook, and retaining a second result file
+would leave two silent sources of truth for the same numbers.
+
+**The residual, which is smaller but real.** Under vat-v1 the same dawn/dusk region still
+produces large *finite* negatives — about **−260** at worst, on 593 / 775 / 501 rows —
+because `θ(t)·ref → 0` there while `s > 0`. These are strictly better than `inf`: they are
+numbers, so an unfiltered `.mean()` over the column stays finite and near-sane
+(−0.04 / −0.09 / +0.04 against in-gate means of +0.25 / +0.18 / +0.29). But they are still
+not valid severity values, so two properties keep them harmless — both now machine-checked:
+
+* they are **confined below the gate**: the largest `ref` among them is **0.276**, against a
+  gate of 0.70, and **none** of them is flagged
+  (`test_exports.test_canonical_deficit_tail_is_confined_below_the_gate`);
+* inside the decision domain the column is **physically bounded**, `−1 ≤ d ≤ 1` — measured
+  minima −0.015 / −0.141 / −0.029
+  (`test_exports.test_canonical_deficit_is_well_formed_inside_the_decision_domain`). That
+  bound is the right contract to publish, and the published method violated it *inside* the
+  gate — its control-pair December deficit reached −0.49 — which is exactly the §3.10 defect.
+
+If you want the column unconditionally safe for an unfiltered `.mean()`, mask it to `NaN`
+outside the gate. `build_export(..., mask_below_gate=True)` already does precisely that for
+`null_d` and `excess_vs_controls`, so it is a one-line extension. I did **not** do it,
+because it changes the meaning of a published column and the gate filtering that
+`SATURATION_DETECTION.md` §8.1 already prescribes is sufficient for correct use.
+
+### 3.10 The continuous `deficit` column was seasonally mis-scaled by up to 0.50 — **fixed**
 
 Same seasonal mechanism as §3.2, but the continuous column is worse than the flags suggest,
 because the annual aggregate the report quotes partly cancels the signs:
@@ -317,6 +339,22 @@ In December the published column reports **−0.50** on a control pair whose tru
 **+0.003**. Anyone treating `deficit` as a severity measure — which is what §6.5 invites —
 inherits a half-unit error that no flag-level check would surface. vat-v1 is 6–12× more
 accurate on the same column, and maps infinities to `NaN`.
+
+This defect is not merely diagnosed, it is **retired**: the canonical file is now produced
+by vat-v1, so the mis-scaled column is no longer what downstream work reads. The published
+behaviour stays measured live by
+`test_detectors.test_published_baseline_is_seasonally_mis_scaled_and_the_corrected_one_is_not`,
+so the contrast remains under test without needing the old output file to exist. Measured
+at `ref ≥ 0.5` in December on the three control pairs (n = 285):
+
+| pair | published | vat-v1 |
+|---|---|---|
+| eu_1+eu_3 | −0.439 | **−0.005** |
+| eu_4+eu_12 | −0.483 | **−0.001** |
+| eu_15+eu_23 | −0.438 | **+0.004** |
+
+The separation is ~0.44 and stable across `ref` thresholds from 0.5 to 0.7 (n = 285, 17 and
+2 respectively), which is what makes it a usable regression band rather than a knife edge.
 
 ### 3.11 A bug in my own recommended detector, found by the test suite
 
@@ -514,19 +552,22 @@ severe        = gate AND d > 0.30 AND 6 consecutive samples          <- strict, 
 conservative  = gate AND d > q_n(ref) AND (bridge within gate) AND 3 consecutive samples
 ```
 
-Implementation: `sat_work/research/recommended.py`; output
-`sat_work/research/saturation_flags_v2.csv` (per-pair `deficit`, `excess_vs_controls`,
-`null_d`, three flag columns). Nothing in the repo root was modified.
+Implementation: `sat_work/research/recommended.py`. Its output is the **canonical artefact**
+`saturation_flags.csv` in the repo root, 51,005 × 21: every
+published v1 column, plus per pair `excess_vs_controls`, `null_d` and `sat_conservative`.
+Regenerate with `recommended.py`; `step21_canonical_summary.py` prints every number quoted
+below, so this section is reproducible rather than hand-copied.
 
-**What changes, and what does not** (`step8`):
+**What changes, and what does not** (`step8`, `step21`):
 
-| pair | published h | vat h | published severe h | vat severe h | days (pub → vat) |
+| pair | published | **canonical** | published severe | **canonical severe** | days (pub → canon) |
 |---|---|---|---|---|---|
-| eu_8+eu_16 | 473.3 | **386.6** | 30.7 | **7.1** | 118 → 115, all 115 shared |
-| eu_10+eu_18 | 592.6 | **539.8** | 27.8 | **13.0** | 149 → 147, 145 shared, 2 new |
-| eu_13+eu_21 | 394.0 | **342.8** | 20.2 | **7.2** | 106 → 104, 102 shared, 2 new |
+| eu_8+eu_16 | 5,680 rows / 473.3 h | **4,639 / 386.6 h** | 30.7 h | **7.1 h** | 118 → 115, all 115 shared |
+| eu_10+eu_18 | 7,111 rows / 592.6 h | **6,478 / 539.8 h** | 27.8 h | **13.0 h** | 149 → 147, 145 shared, 2 new |
+| eu_13+eu_21 | 4,728 rows / 394.0 h | **4,113 / 342.8 h** | 20.2 h | **7.2 h** | 106 → 104, 102 shared, 2 new |
 
-Total: **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %).
+Total **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %), and **78.7 h → 27.3 h**
+in the severe tier (2.9× inflation removed).
 
 * **Every published conclusion survives.** The affected days are almost a subset of the
   published ones (0–2 new days; 3–4 published-only). The seasonal shape is unchanged:
@@ -534,8 +575,9 @@ Total: **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %).
   the pair-off blocks.
 * **Magnitudes shrink 9–18 %** (−18.3 %, −8.9 %, −13.0 %), *after* the adopted
   gap-tolerant persistence rule has recovered +5.3 % of hours (§3.13). Without that rule
-  the shrink is 13–22 %. **The severe tier shrinks 2.5–4×** — unchanged, because bridging
-  is deliberately not applied there.
+  the shrink is 13–22 %. **The severe tier shrinks 2.1–4.3×** (78.7 h → 27.3 h overall,
+  2.9×) — unchanged from earlier drafts, because bridging is deliberately not applied
+  there.
 * **July 2026 (eu_8+eu_16: 78.8 h → 46.0 h) is now explained and is not a defect** — it
   is a threshold boundary landing mid-population in the mildest month of the record. See
   §3.8. On the same rows vat-v1's deficit matches the independent peer-ratio truth to
@@ -550,23 +592,29 @@ Total: **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %).
 
 ## 6. Prioritised actions
 
-1. **Replace the ceiling.** Swap `g0·cap(t)·ref` for `θ(t)·ref`. One function, all
-   downstream numbers become calibrated. Highest impact, lowest risk.
-2. **Re-state the counts.** The headline 17,519 rows / 1,459.9 h and the implied kWh are
-   inflated: 15,230 rows / 1,269.2 h after the fix (−13.1 %), and the severe tier is
-   inflated 2.5–4×. The bias floor is 47 % of the published energy figure.
-3. ~~**Delete the `-inf` values** (§3.9).~~ **DONE 2026-09** (`step20`): repaired to `NaN`
-   in the shipped file (flag columns verified byte-identical, original kept as
-   `saturation_flags.published_backup.csv`) **and fixed at the source** in the notebook's
-   export cell, so a re-run cannot reintroduce them.
+1. ~~**Replace the ceiling.** Swap `g0·cap(t)·ref` for `θ(t)·ref`.~~ **DONE 2026-09.** The
+   recommended detector is implemented (`recommended.py`), exported, and **is now the
+   canonical artefact** — the repo-root `saturation_flags.csv` is regenerated from it. The
+   published method is retained only as committed code (`bench.det_published`, the
+   notebook), not as a parallel result file.
+2. ~~**Re-state the counts.**~~ **DONE 2026-09.** The canonical artefact carries
+   15,230 rows / 1,269.2 h against the published 17,519 / 1,459.9 h (−13.1 %), with the
+   severe tier down from 78.7 h to 27.3 h (2.9× inflation removed). The published bias
+   floor was 47 % of its energy figure; the canonical one is 7 %.
+3. ~~**Delete the `-inf` values.**~~ **DONE 2026-09.** Eliminated structurally by the vat-v1
+   regeneration (they cannot occur) *and* fixed at the source in the notebook's export cell.
+   The residual below-gate tail is finite, confined to `ref < 0.3`, and machine-checked —
+   see §3.9, which also records the one-line option to mask it if you want the column
+   unconditionally safe.
 4. **Run the regression suite before publishing any detector change**
-   (`sat_work/tests/run_tests.py`, 42 tests, ~4 s, no new dependencies). It encodes the
+   (`sat_work/tests/run_tests.py`, 43 tests, ~4 s, no new dependencies). It encodes the
    ground-truth benchmark that the existing control-pair validation structurally cannot
-   replace, and it has now caught three real defects — the persistence bug in §3.11, the
-   below-gate fill in §3.13, and the `-inf` values in §3.9.
-5. **Separate presence from severity.** Publish `d(t)` and `q_n(ref)` as continuous
-   columns; let the user threshold. State that the moderate tier is a severity tier, and
-   mask `q_n` outside the gate domain (§3.10).
+   replace, and it has caught four real defects — the persistence bug in §3.11, the
+   below-gate fill in §3.13, the `-inf` values in §3.9, and a vacuous assertion in my own
+   seasonal-bias test (§3.10).
+5. ~~**Separate presence from severity.**~~ **DONE**: `d(t)` and `q_n(ref)` ship as
+   continuous columns with the tiers alongside, and `q_n`/`excess_vs_controls` are masked
+   outside the gate domain (§3.10).
 6. **State the scope limits**: blind below `ref ≈ 0.6`; winter low-sun untestable;
    single-timestamp local shading indistinguishable from mild saturation (as the report
    already says).
@@ -598,7 +646,7 @@ Requested audit of the two artefacts that consume this work (`step19`).
 
 ### 7.1 `power_production.pptx` — nothing to correct, everything to fill
 
-4 slides, and **no saturation numbers appear anywhere in it**:
+4 slides. Originally **no saturation numbers appeared anywhere in it**:
 
 | slide | text | figures |
 |---|---|---|
@@ -607,10 +655,11 @@ Requested audit of the two artefacts that consume this work (`step19`).
 | 3 | **"Explain about saturated problem"** — a placeholder | 1 |
 | 4 | *(no text)* | 1 |
 
-So the deck does not need correcting — slide 3 is an empty heading waiting for the
-analysis. **What it needs:** the §5 table (per-pair hours and severe hours), the severe-tier
-shrink of 2.5–4×, the bias floor (47 % → 7 % of the claimed energy), and figures 1–3.
-Slide 2's own numbers are consistent with the analysis and need no change.
+So the deck needed filling, not correcting — slide 3 was an empty heading waiting for the
+analysis. **Filled 2026-09** with the regenerated §5 numbers: per-pair hours and severe
+hours, the 78.7 h → 27.3 h severe shrink, the bias floor (47 % → 7 % of the claimed
+energy), the §3.12 topology result, and the `θ` ≈ 9.0 kW nameplate cross-check. Slides 1–2
+were left untouched; slide 2's own numbers were already consistent with the analysis.
 
 Slide 2 also produced the review's best validation (§2.7): the 9.0 kW nameplate matches
 `θ_u` to 4 % across all 23 units.
@@ -629,11 +678,11 @@ which units share a cover type — and it is the most promising remaining lead.
 |---|---|---|
 | 7.1 | **"144× separation"**, 122 control rows vs 17,519 shared | separation is real but the 122 are **not** what the doc says |
 | 7.1 | control flags "land on genuine few-percent midday sags — consistent with mild inverter AC-limit clipping, i.e. small *real* constraint events rather than detector noise" | **falsified.** They are baseline bias: the published expectation fabricates a median 803 kWh/pair across 117 independent pairs (§3.12). The comparison is also mismatched — 122 rows is the flag count, not the claimed energy |
-| 7.4 | rows/hours/days: 5,680 / 473 / 118; 7,111 / 593 / 149; 4,728 / 394 / 106 | → **4,639 / 386.6 / 115; 6,478 / 539.8 / 147; 4,113 / 342.8 / 104** (−13.1 % overall) |
-| 7.4 | "Severe events: 368 / 334 / 243 rows" | → **85 / 156 / 86 rows** (2.5–4× smaller; the tier most exposed to baseline bias) |
+| 7.4 | rows/hours/days: 5,680 / 473 / 118; 7,111 / 593 / 149; 4,728 / 394 / 106 | → **4,639 / 386.6 / 115; 6,478 / 539.8 / 147; 4,113 / 342.8 / 104** (−13.1 % overall). These are now the numbers the canonical artefact actually contains |
+| 7.4 | "Severe events: 368 / 334 / 243 rows" | → **85 / 156 / 87 rows** (2.1–4.3× smaller; the tier most exposed to baseline bias) |
 | 7.3 | threshold-sensitivity table (473 / 593 / 394 at 0.15) | **recomputed** — see below |
 | 5.3 | `expected = g0 · cap(t) · ref` | → **`θ(t) · ref`** (§3.2). The doc's §10 already proposes this: *"`g0` is currently a global-per-pair scalar; making it rolling (31-day median of mid-ref gain) would track long-term soiling more tightly."* **`vat-v1` is that extension, not a departure from the method** |
-| 8.1 | `-inf` at `ref = 0` "division artifact; flags can never fire there — filter `ref ≥ 0.7`" | **disclosed, not hidden** — good practice. The values have now been repaired to `NaN` in the shipped file (§3.9) |
+| 8.1 | `-inf` at `ref = 0` "division artifact; flags can never fire there — filter `ref ≥ 0.7`" | **disclosed, not hidden** — good practice. Eliminated structurally by the vat-v1 regeneration; the residual is finite, confined below the gate, and machine-checked (§3.9) |
 | 2.1 | `eu_7` "on a different scale … treated as an odd/reference unit and excluded" | correct; now **confirmed by the site engineer as a technical fault** and guarded by `test_topology.py` |
 
 **Recomputed §7.3 — flagged hours vs the deficit cutoff** (`step20`). The doc's conclusion
@@ -691,6 +740,13 @@ carries over unchanged (§2.3), and section 4's `RELIABLE` list is exactly right
   costs 72 false-positive rows on the benchmark (108 → 180) for +5.0 pp recall. It is
   free on the real control pairs, but the benchmark disagrees, and the benchmark is the
   only place with ground truth. Quote both numbers.
+* **The canonical `deficit` column is only meaningful inside the gate.** It carries a large
+  *finite* negative tail below `ref ≈ 0.3` (down to about −260) where `θ(t)·ref → 0`. The
+  tail is confined below the gate, never flagged, and machine-checked — but it means an
+  unfiltered `.mean()` over the whole column is not a meaningful statistic (it returns
+  −0.04 / −0.09 / +0.04 against in-gate means of +0.25 / +0.18 / +0.29). Filter as
+  `SATURATION_DETECTION.md` §8.1 already prescribes, or take the one-line masking option in
+  §3.9.
 
 ---
 
@@ -721,18 +777,29 @@ sat_work/
     step17_groundtruth.py  fleet topology: natural experiment, null re-examination
     step18_persist_decision.py  persistence rule search: the guard hypothesis, tested
     step19_docs_audit.py   downstream-artefact audit + the 9.0 kW nameplate check
-    step20_sensitivity.py  recomputed threshold sensitivity; repaired the -inf values
-    recommended.py         vat-v1 end to end -> saturation_flags_v2.csv
+    step20_sensitivity.py  recomputed threshold sensitivity; retired the -inf values
+    step21_canonical_summary.py  the canonical artefact's headline numbers
+    recommended.py         vat-v1 end to end -> the canonical saturation_flags.csv
     bench_results.csv, bench_synthesis.csv, bench_robustness.csv,
-    baseline_calibration.csv, energy_estimate.csv, july_forensic.csv,
-    saturation_flags_v2.csv
+    baseline_calibration.csv, energy_estimate.csv, july_forensic.csv
   tests/
-    run_tests.py           dependency-free runner: 42 tests, ~4 s, exit code 0 when green
+    run_tests.py           dependency-free runner: 43 tests, ~4 s, exit code 0 when green
     test_detectors.py      detector accuracy on injected ground truth
-    test_exports.py        data-product contracts (the -inf and gap guards live here)
+    test_exports.py        data-product contracts (the -inf and deficit-bound guards live here)
     test_topology.py       fleet mapping; eu_7's exclusion; the cross-inverter null guard
     _helpers.py            scenario accessors + known_failure marker
     conftest.py            pytest support, if pytest is ever installed
+```
+
+The data products, at the repo root:
+
+```
+saturation_flags.csv            THE CANONICAL FLAGS ARTEFACT (vat-v1). 51,005 x 21.
+                                  Regenerate: python sat_work/research/recommended.py
+data_quality_events.csv         DQ event log (unchanged)
+saturation_detection.ipynb      the PUBLISHED method, retained and committed. It is the
+                                  reproducible record of the old outputs; its export cell
+                                  is patched so a re-run cannot reintroduce -inf.
 ```
 
 Run the suite with:
@@ -743,11 +810,15 @@ Run the suite with:
 ./venv/Scripts/python.exe sat_work/tests/run_tests.py -k export
 ```
 
-Status at hand-off: **40 passed, 0 failed, 2 xfailed, 0 xpassed**. The two expected failures
-are the documented defects that are real but not yet fixed — the published detector's
-control-pair bias, and the winter mis-scaling of the published continuous column. Both are
-properties of the **published** method: fixing them means regenerating the artefact with
-`vat-v1`, which is a modelling decision rather than a patch. They flip to passes
-automatically once that happens; the runner prints an XPASS notice telling you to remove the
-marker. (The third xfail — the `-inf` values — was a pure defect with no modelling content,
-and has been repaired; see §3.9.)
+Status at hand-off: **43 passed, 0 failed, 1 xfailed, 0 xpassed**. The single expected
+failure is `test_published_detector_is_biased_on_control_pairs` — the published *method*
+flags intact independent pairs, which is real and unfixed, because the fix is to stop using
+the published method rather than to patch it. It flips to a pass only if `det_published` is
+replaced; the runner prints an XPASS notice telling you to remove the marker.
+
+The two data-product xfails that used to sit alongside it are both resolved. The `-inf`
+values were regenerated away, and the seasonal mis-scaling of the continuous column went
+with them, because the canonical file is no longer produced by the method that had the
+defect. Both properties are still guarded: `-inf` by a direct test on the canonical file,
+and the seasonal bias by `test_published_baseline_is_seasonally_mis_scaled_...`, which
+measures the old behaviour live from frozen code rather than from a retired file.

@@ -8,6 +8,25 @@
 
 ---
 
+> **Superseded as the spec for `saturation_flags.csv` (2026-09).**
+>
+> This document specifies the **published** method, `expected = g0 · cap(t) · ref`. It
+> remains accurate as the record of that method and of `saturation_detection.ipynb`, and it
+> is kept deliberately: it is the reproducible spec for the previous approach, which is
+> still available as `bench.det_published()`.
+>
+> It is no longer the spec for the shipped flags file. `saturation_flags.csv` is now the
+> canonical **vat-v1** artefact, written by `sat_work/research/recommended.py`, with
+> `expected = theta(t) · ref`.
+>
+> - Corrected method and results: **`SATURATION_REVIEW.md`** §5.
+> - The exact claims here that change: §7.2 of the review. In summary, the §7.4 counts, the
+>   §7.1 interpretation of the control-pair flags, and the §8.1 deficit-column `-inf` note.
+> - To interpret the current `saturation_flags.csv`, use the review. To reproduce or audit
+>   the published outputs, this document is still the right one.
+
+---
+
 ## 1. Background and Objective
 
 The Area 1 array consists of 24 experimental units (`eu_1` … `eu_24`) logging power

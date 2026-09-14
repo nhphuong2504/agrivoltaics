@@ -33,22 +33,29 @@ for k in ("eu_8_eu_16", "eu_10_eu_18", "eu_13_eu_21"):
               f"sum={int(c.sum())} hours={c.sum()/12:.1f}")
 
 print()
-print("published column schema (for the backwards-compatibility test):")
-pub_cols = pd.read_csv(r"c:\Users\nhphuong\Desktop\Solar\all_data\saturation_flags.csv",
-                       nrows=0).columns.tolist()
-print(f"  {pub_cols}")
-miss = [c for c in pub_cols if c not in ex.columns]
-print(f"  published columns missing from the export: {miss}")
+print("published v1 schema (now FROZEN in tests/_helpers.PUBLISHED_V1_COLUMNS):")
+print("  time, ref, dq_site_outage, <pair>_{deficit,sat_moderate,sat_severe} for 3 pairs")
+print("  NOTE: no longer read from the file on disk. The canonical file IS the export, so")
+print("        deriving the backwards-compatibility contract from it would be circular.")
+canon_cols = pd.read_csv(r"c:\Users\nhphuong\Desktop\Solar\all_data\saturation_flags.csv",
+                         nrows=0).columns.tolist()
+print(f"  canonical file: {len(canon_cols)} columns; identical to the export: "
+      f"{canon_cols == ex.columns.tolist()}")
 
 print()
 print("=" * 100)
-print("KNOWN FAILURE - the SHIPPED published csv")
+print("THE CANONICAL ARTEFACT (repo-root saturation_flags.csv)")
 print("=" * 100)
 shipped = pd.read_csv(r"c:\Users\nhphuong\Desktop\Solar\all_data\saturation_flags.csv")
 sc = shipped.select_dtypes("number")
+print(f"  shape {shipped.shape}")
 print(f"  inf values: {int(np.isinf(sc.to_numpy()).sum())}")
 print(f"  columns affected: "
       f"{[c for c in sc.columns if np.isinf(sc[c].to_numpy()).any()]}")
+ing = shipped["ref"] >= B.REF_ON
+for k in ("eu_8_eu_16", "eu_10_eu_18", "eu_13_eu_21"):
+    c = shipped.loc[ing, f"{k}_deficit"].dropna()
+    print(f"  {k}_deficit inside the gate: min {c.min():+.4f}  max {c.max():+.4f}")
 
 print()
 print("=" * 100)

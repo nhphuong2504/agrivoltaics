@@ -20,9 +20,15 @@ vat-v1:
                                (null-calibrated -- NOT stricter than moderate; see
                                 bench.build_export's note on the misnomer)
 
-Outputs (into this directory; nothing in the repo root is touched):
-  saturation_flags_v2.csv
-  energy_estimate.csv
+Outputs:
+  <repo root>/saturation_flags.csv   THE CANONICAL FLAGS ARTEFACT (vat-v1)
+  energy_estimate.csv                a research artefact, written beside this file
+
+CANONICAL AS OF 2026-09. The repo-root `saturation_flags.csv` is now this detector's
+output. The previous published method is deliberately NOT kept as a parallel result file:
+it stays reproducible from `bench.det_published()` (frozen, tested) and from the committed
+`saturation_detection.ipynb`, both of which are in git history. Keeping two result files
+would leave two silent sources of truth for the same numbers.
 
 Run:  ./venv/Scripts/python.exe sat_work/research/recommended.py
 """
@@ -43,6 +49,9 @@ if _HERE not in sys.path:
 
 import bench as B  # noqa: E402  (frozen harness)
 
+ROOT = os.path.dirname(os.path.dirname(_HERE))       # the repo root
+CANONICAL_CSV = os.path.join(ROOT, "saturation_flags.csv")
+
 df = B.raw_df()
 fe = B.raw_fe()
 ref = fe["ref"]
@@ -55,7 +64,7 @@ CONTROL_PAIRS = B.CONTROL_PAIRS
 # 1. the export
 # --------------------------------------------------------------------------- #
 out = B.build_export()
-out.to_csv(os.path.join(_HERE, "saturation_flags_v2.csv"), index=False)
+out.to_csv(CANONICAL_CSV, index=False)
 
 
 def flags_for(pair, tier="moderate"):
@@ -143,4 +152,30 @@ print(f"  deficit columns finite-or-NaN: "
       f"{all(not np.isinf(out[f'{a}_{b}_deficit']).any() for a, b in PAIRS)}")
 print(f"  null_d NaN below the gate: "
       f"{all(out.loc[out['ref'] < B.REF_ON, f'{a}_{b}_null_d'].isna().all() for a, b in PAIRS)}")
-print("\nwrote", os.path.join(_HERE, "saturation_flags_v2.csv"))
+
+# --------------------------------------------------------------------------- #
+# 5. the canonical artefact round-trips
+# --------------------------------------------------------------------------- #
+#    Read back what was actually written, rather than trusting the frame in memory:
+#    the file is the deliverable, and a silent dtype/NaN regression on the way to disk
+#    would leave a good frame in memory and a bad artefact on disk.
+print()
+print("=" * 96)
+print("CANONICAL ARTEFACT")
+print("=" * 96)
+back = pd.read_csv(CANONICAL_CSV)
+back_num = back.select_dtypes("number")
+n_inf = int(np.isinf(back_num.to_numpy()).sum())
+ok = len(back) == len(df) and list(back.columns) == list(out.columns) and n_inf == 0
+print(f"  {CANONICAL_CSV}")
+print(f"  rows {len(back):,} (dataset {len(df):,})   cols {back.shape[1]}   "
+      f"infinite values {n_inf}")
+print(f"  round-trip clean: {ok}")
+for a, b in PAIRS:
+    k = f"{a}_{b}"
+    mod = int(back[f"{k}_sat_moderate"].sum())
+    sev = int(back[f"{k}_sat_severe"].sum())
+    print(f"    {k}: moderate {mod:5,} rows = {mod/12:7.1f} h   "
+          f"severe {sev:4,} rows = {sev/12:6.1f} h")
+assert ok, "canonical artefact did not round-trip cleanly"
+print("\nwrote", CANONICAL_CSV)
