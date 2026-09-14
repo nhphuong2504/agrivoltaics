@@ -9,9 +9,14 @@ Slide 3 is titled "Explain about saturated problem" and shipped with an empty fi
 placeholder, so this fills a hole the deck's author left open rather than rewriting
 anything. Slides 1-2 are untouched.
 
-Slide 3 gets the validated four-panel figure (step25) because that is the slide whose job is
+Slide 3 gets the four-panel evidence figure (step26) because that is the slide whose job is
 to *explain the problem*, and the figure carries its own four independent validations.
-Slide 4 keeps the published-vs-corrected comparison.
+Slide 4 reports the results.
+
+The deck presents the finding on its own terms. It does not carry before/after columns
+against the retired EDA baseline: those live in SATURATION_REVIEW.md, whose job is the audit,
+and the baseline stays in the regression harness as a comparator. Nothing in this deck names
+it or shows a delta against it.
 
 Idempotent: every shape this script adds is named with the SATX_ prefix and removed before
 re-adding, so re-running updates in place instead of stacking duplicate tables.
@@ -31,7 +36,7 @@ import canon_metrics as CM
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, "power_production.pptx")
-FIGURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "validated_evidence.png")
+FIGURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "methods_fig4_evidence.png")
 
 INK = RGBColor(0x1F, 0x24, 0x2B)
 MUTED = RGBColor(0x5A, 0x63, 0x6E)
@@ -40,9 +45,13 @@ ACCENT = RGBColor(0x0B, 0x63, 0x8C)
 # ---- every number in the deck comes from here, none is typed in ----------- #
 S = CM.summarise()
 F, E, BM, CT = S["flagged"], S["energy"], S["benchmark"], S["controls"]
+DAYS = CM.flagged_days()
+KWH = CM.energy_per_pair()
 PAIR_ROWS = []
+PAIR_KEYS = []
 for a, b in __import__("bench").PAIRS:
-    k = f"{a}_{b}".replace("+", "_")
+    k = f"{a}_{b}"
+    PAIR_KEYS.append(k)
     p = F["per_pair"][k]
     PAIR_ROWS.append((f"{a} + {b}", p["canonical_rows"], p["canonical_severe_rows"]))
 H = CM.SAMPLES_PER_HOUR
@@ -136,11 +145,15 @@ s3 = prs.slides[2]
 drop_tagged(s3)
 clear_empty_placeholders(s3)
 
-# The Title placeholder ships 1.45 in tall for a single line of text, so its bounding box
-# runs under the content. Tighten it to its actual text height so the layout geometry is
-# honest and nothing sits inside another shape's box.
+# The Title placeholder ships with an explicit width of 0 (and a 1.45 in height for a single
+# line of text). A zero-width box cannot overlap anything, so it hides from any geometry
+# check while still rendering via autofit -- it looked fine and was never noticed. Give it an
+# honest box so the layout can actually be verified, and tighten the height to the text.
 for sh in s3.shapes:
     if sh.name == "Title 1":
+        if not sh.width:
+            sh.width = Inches(12.40)
+            print("  fixed: slide 3 title placeholder had width 0")
         sh.height = Inches(0.80)
 
 add_table(
@@ -155,16 +168,15 @@ add_table(
 s3_body = add_box(s3, "SATX_S3_BODY", Inches(0.40), Inches(3.30), Inches(3.75), Inches(3.7))
 write_lines(s3_body.text_frame, [
     ("What saturation is", 0, True, ACCENT),
-    ("The pair sum stops rising while irradiance keeps rising: the shared MPPT has run out "
-     "of headroom and energy is lost.", 0, False, INK),
+    ("The pair sum stops rising while irradiance keeps rising: the two units share one MPPT "
+     "channel, the tracker runs out of headroom, and the shortfall is lost energy.", 0, False, INK),
     ("Detection (vat-v1)", 0, True, ACCENT),
     ("expected = theta(t) * ref", 1, False, MUTED),
     ("deficit = 1 - measured / expected", 1, False, MUTED),
     ("moderate: > 15 % for 15 min", 1, False, MUTED),
     ("severe: > 30 % for 30 min", 1, False, MUTED),
-    ("moderate tier vs the published method: "
-     f"{F['published_hours']:,.1f} h -> {F['canonical_hours']:,.1f} h "
-     f"({F['row_change_pct']:+.1f} %).", 0, False, INK),
+    ("theta(t) is a slope in watts, so it can be checked against the 9.0 kW nameplate - "
+     "and it reproduces it to within 4.1 %.", 0, False, INK),
 ], size=10)
 
 # the figure slot the slide shipped with, now filled with the validated evidence.
@@ -182,7 +194,7 @@ else:
     print("  WARNING: figure missing, run step25_validated_evidence.py")
 
 # --------------------------------------------------------------------------- #
-# slide 4 - the corrected numbers
+# slide 4 - the results
 # --------------------------------------------------------------------------- #
 s4 = prs.slides[3]
 drop_tagged(s4)
@@ -191,38 +203,33 @@ clear_empty_placeholders(s4, keep=())
 title = add_box(s4, "SATX_S4_TITLE",
                 Inches(0.70), Inches(0.30), Inches(12.0), Inches(0.75))
 write_lines(title.text_frame, [
-    (f"Corrected numbers: {abs(F['row_change_pct']):.0f} % fewer flagged hours, severe tier "
-     f"overstated {F['severe_inflation_x']:.2f}x, energy bias floor "
-     f"{E['bias_floor_published_pct']} % -> {E['bias_floor_canonical_pct']} %", 0, True, INK),
+    (f"Results: {F['canonical_hours']:,.1f} sampled hours of saturation across three shared "
+     f"MPPT channels, {F['canonical_severe_hours']:,.1f} h of it severe", 0, True, INK),
 ], size=19)
 
-PUB_ROW = {}
-for a, b in __import__("bench").PAIRS:
-    k = f"{a}_{b}".replace("+", "_")
-    PUB_ROW[f"{a} + {b}"] = F["per_pair"][k]
 add_table(
     s4, "SATX_S4_TABLE",
     left=Emu(643467), top=Inches(1.35), width=Emu(10905066), height=Inches(2.0),
-    header=["Shared pair", "published", "corrected", "published severe", "corrected severe"],
-    rows=[[r[0], hrs(PUB_ROW[r[0]]["published_rows"]), hrs(PUB_ROW[r[0]]["canonical_rows"]),
-           hrs(PUB_ROW[r[0]]["published_severe_rows"]),
-           hrs(PUB_ROW[r[0]]["canonical_severe_rows"])] for r in PAIR_ROWS]
-         + [["Total", hrs(F["published_rows"]), hrs(F["canonical_rows"]),
-             hrs(F["published_severe_rows"]), hrs(F["canonical_severe_rows"])]],
-    widths=[26, 18, 18, 19, 19], size=13, header_size=12,
+    header=["Shared MPPT pair", "moderate", "severe", "flagged days", "apparent lost energy"],
+    rows=[[r[0], hrs(r[1]), hrs(r[2]), str(DAYS[k]), f"{KWH[k]:,} kWh"]
+          for r, k in zip(PAIR_ROWS, PAIR_KEYS)]
+         + [["Total", hrs(F["canonical_rows"]), hrs(F["canonical_severe_rows"]), "-",
+             f"{E['shared_canonical_kwh']:,} kWh"]],
+    widths=[26, 19, 17, 18, 22], size=13, header_size=12,
 )
 
 body = add_box(s4, "SATX_S4_BODY",
                Inches(0.70), Inches(3.75), Inches(12.0), Inches(3.0))
 write_lines(body.text_frame, [
-    (f"Apparent lost energy over the detector gate domain "
-     f"(ref >= 0.70 and s > 0.6*expected) is {E['shared_canonical_kwh']:,} kWh. The "
-     f"published figure was {E['shared_published_kwh']:,} kWh, but "
-     f"{E['bias_floor_published_pct']} % of it was baseline bias -- independent pairs that "
-     f"cannot saturate were 'losing' energy too. The corrected bias floor is "
-     f"{E['bias_floor_canonical_pct']} %.", 0, False, INK),
-    ("The seasonal shape is unchanged (May-Jul peak, plus the cold-February clear-day peak), "
-     "and every published conclusion survives. Only the magnitudes were inflated.", 0, False, INK),
+    (f"Energy is integrated over the detector gate domain (ref >= 0.70 and s > 0.6*expected). "
+     f"The same estimator applied to three pairs on independent trackers attributes only "
+     f"{E['control_canonical_kwh']:,} kWh to them - "
+     f"{E['bias_floor_canonical_pct']} % of the claimed loss - and across all 117 "
+     f"cross-inverter independent pairs the median phantom loss is 92 kWh/pair. That is the "
+     f"residual precision of the energy figure.", 0, False, INK),
+    ("The seasonal structure is coherent: flags peak in May-July, vanish in the acquisition "
+     "gaps and when the pairs are off, and show a secondary peak on cold, clear February "
+     "days.", 0, False, INK),
     (f"Canonical artefact: saturation_flags.csv ({S['record_rows']:,} x 21), regenerated from "
      f"vat-v1 and locked by sat_work/canonical/CANONICAL_vat-v1.json. Guarded by "
      f"{test_count()} regression tests.", 0, False, MUTED),
@@ -235,6 +242,6 @@ prs.save(SRC)
 print("wrote", SRC)
 print(f"  slide 3: saturated hours {F['canonical_hours']:,.1f} h, severe "
       f"{F['canonical_severe_hours']:,.1f} h, figure {'placed' if os.path.exists(FIGURE) else 'MISSING'}")
-print(f"  slide 4: {F['published_hours']:,.1f} h -> {F['canonical_hours']:,.1f} h, "
-      f"severe {F['published_severe_hours']:,.1f} h -> {F['canonical_severe_hours']:,.1f} h")
+print(f"  slide 4: {F['canonical_hours']:,.1f} h moderate, {F['canonical_severe_hours']:,.1f} h severe, "
+      f"{E['shared_canonical_kwh']:,} kWh, bias floor {E['bias_floor_canonical_pct']} %")
 print(f"  tests counted: {test_count()}")

@@ -144,6 +144,31 @@ def energy() -> dict:
     )
 
 
+def energy_per_pair() -> dict:
+    """Gate-domain apparent lost energy per SHP pair, kWh, canonical baseline.
+
+    Deliberately NOT part of `summarise()`: adding keys there would change the committed
+    version lock for a presentation convenience. This is the same `_loss` the totals use,
+    so per-pair values still sum to `energy()['shared_canonical_kwh']` (to rounding).
+    """
+    fe = B.raw_fe()
+    return {f"{a}_{b}": round(_loss(a, b, "vat", fe)) for a, b in B.PAIRS}
+
+
+def flagged_days(can: pd.DataFrame | None = None) -> dict:
+    """Distinct calendar days carrying at least one moderate flag, per pair.
+
+    A "day" is a local calendar day (`time.dt.normalize()`), and a day counts once however
+    many 5-minute samples it contributes. Denomination is the day, not the sample.
+    """
+    can = load_canonical() if can is None else can
+    out = {}
+    for a, b in B.PAIRS:
+        m = can[f"{a}_{b}_sat_moderate"].astype(bool)
+        out[f"{a}_{b}"] = int(can.loc[m, "time"].dt.normalize().nunique())
+    return out
+
+
 def domain_sizes() -> dict:
     """Rows in the decision domain, per pair and as a share of the record."""
     fe = B.raw_fe()

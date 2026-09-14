@@ -8,6 +8,15 @@ measurable calibration bias that inflates every count in the report, and its spe
 collapses in exactly the regime that matters (intermittent clipping). A simpler,
 better-calibrated detector is proposed and verified.
 
+> **Scope.** This document is an *audit* of the retired EDA baseline — it exists to record
+> what was wrong with it and why the replacement is justified, so the comparison is
+> deliberate and belongs here.
+>
+> The method and the finding it produces are written up on their own terms, without
+> comparison to that baseline, in **[`METHODS_RESULTS.md`](METHODS_RESULTS.md)**. The deck
+> (`power_production.pptx`) follows that framing too. Quote the write-up to an audience;
+> keep this document for the record.
+
 ---
 
 ## 1. What I did
