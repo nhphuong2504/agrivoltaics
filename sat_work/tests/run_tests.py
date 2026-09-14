@@ -35,7 +35,7 @@ if HERE not in sys.path:
 import _helpers  # noqa: E402
 from _helpers import KnownFailure  # noqa: E402
 
-TEST_MODULES = ["test_detectors", "test_exports", "test_topology"]
+TEST_MODULES = ["test_detectors", "test_exports", "test_topology", "test_manifest"]
 
 
 def discover(filters=()):

@@ -380,18 +380,25 @@ def build_export(pairs=PAIRS, controls=CONTROLS, mask_below_gate=True):
       * `time` plus every column of the published saturation_flags.csv is present, so
         existing consumers keep working (the export is a superset)
       * `deficit` never contains +/-inf
-      * `null_d` and `excess_vs_controls` are NaN outside the gate domain, because the
-        empirical null is only meaningful where the detector would actually decide
+      * `deficit`, `null_d` and `excess_vs_controls` are NaN outside the DECISION DOMAIN
+        -- `act & ref >= REF_ON & ~dq_mask`. Inside it `deficit` is bounded to [-1, 1].
+        Outside it the column is meaningless: below the gate `theta*ref -> 0` so the ratio
+        blows up (it reached -260 before this masking), and on an inactive or DQ-flagged
+        row the pair sum is not a measurement of anything.
       * `*_sat_*` flags are 0/1 integers and are never 1 where `deficit` is NaN
+
+    One domain definition, used everywhere: this is byte-for-byte the domain that
+    `evaluate()` computes AUC over. Keeping a single definition is what lets the published
+    summary quote one denominator for every rate.
+
+    Persistence: all three tiers use the adopted gap-tolerant rule (PERS_GAP), i.e.
+    1-sample acquisition gaps are bridged before the run-length test. See
+    SATURATION_REVIEW.md section 3.13 for the measured trade-off.
 
     Note on naming: `*_sat_conservative` is the null-calibrated tier. It is NOT more
     restrictive than `*_sat_moderate` in practice (it flags more) because the control-pair
     null often sits below 0.15. The name is a misnomer kept for continuity; treat it as an
     alternative calibration, not a stricter one.
-
-    Persistence: all three tiers use the adopted gap-tolerant rule (PERS_GAP), i.e.
-    1-sample acquisition gaps are bridged before the run-length test. See
-    SATURATION_REVIEW.md section 3.13 for the measured trade-off.
     """
     df = raw_df()
     fe = raw_fe()
@@ -409,12 +416,15 @@ def build_export(pairs=PAIRS, controls=CONTROLS, mask_below_gate=True):
                 & d["act"] & ~dq_mask(fe, a, b))
         qn = pd.Series(binidx, index=df.index).map(null).astype(float)
         excess = d["deficit"] - qn
-        domain = d["act"] & (ref >= REF_ON)
+        # THE decision domain, identical to evaluate()'s `test`
+        domain = d["act"] & (ref >= REF_ON) & ~dq_mask(fe, a, b)
         if mask_below_gate:
             qn = qn.where(domain)
             excess = excess.where(domain)
 
         deficit = d["deficit"].replace([np.inf, -np.inf], np.nan)
+        if mask_below_gate:
+            deficit = deficit.where(domain)
         moderate = persist(bridge(gate & (d["deficit"] > THR_MOD), PERS_GAP, within=gate),
                            PERS_MOD, index=df.index)
         severe = persist(bridge(gate & (d["deficit"] > THR_SEV), PERS_GAP_SEV, within=gate),

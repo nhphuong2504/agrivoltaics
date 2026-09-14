@@ -1,34 +1,63 @@
 """
-STEP 22 - fill `power_production.pptx` with the regenerated saturation numbers.
+STEP 22 - fill `power_production.pptx` from the canonical summary.
 
-Why a script rather than hand-editing the slide: the numbers now live in the canonical
-`saturation_flags.csv`, so the deck should be regenerable from them instead of being a
-hand-copied snapshot that drifts the next time the detector changes.
+Why a script rather than hand-editing the slide: the numbers live in the canonical
+`saturation_flags.csv` via `canon_metrics.summarise()`, the same source the review, the
+canvas and the version lock use. Hand-copying them into a deck is what makes a deck drift.
 
-Slide 3 is titled "Explain about saturated problem" and shipped with an empty content
+Slide 3 is titled "Explain about saturated problem" and shipped with an empty figure
 placeholder, so this fills a hole the deck's author left open rather than rewriting
 anything. Slides 1-2 are untouched.
 
+Slide 3 gets the validated four-panel figure (step25) because that is the slide whose job is
+to *explain the problem*, and the figure carries its own four independent validations.
+Slide 4 keeps the published-vs-corrected comparison.
+
 Idempotent: every shape this script adds is named with the SATX_ prefix and removed before
-re-adding, so re-running it updates in place instead of stacking duplicate tables.
+re-adding, so re-running updates in place instead of stacking duplicate tables.
 
 Run:  ./venv/Scripts/python.exe sat_work/research/step22_fill_deck.py
 """
 import sys, io, os
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 
+import canon_metrics as CM
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, "power_production.pptx")
+FIGURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "validated_evidence.png")
 
 INK = RGBColor(0x1F, 0x24, 0x2B)
 MUTED = RGBColor(0x5A, 0x63, 0x6E)
 ACCENT = RGBColor(0x0B, 0x63, 0x8C)
-DANGER = RGBColor(0xA3, 0x2B, 0x2B)
+
+# ---- every number in the deck comes from here, none is typed in ----------- #
+S = CM.summarise()
+F, E, BM, CT = S["flagged"], S["energy"], S["benchmark"], S["controls"]
+PAIR_ROWS = []
+for a, b in __import__("bench").PAIRS:
+    k = f"{a}_{b}".replace("+", "_")
+    p = F["per_pair"][k]
+    PAIR_ROWS.append((f"{a} + {b}", p["canonical_rows"], p["canonical_severe_rows"]))
+H = CM.SAMPLES_PER_HOUR
+
+
+def hrs(rows):
+    return f"{rows / H:,.1f} h"
+
+
+def test_count():
+    """Count the suite instead of hard-coding it into a slide."""
+    sys.path.insert(0, os.path.join(ROOT, "sat_work", "tests"))
+    import run_tests
+    return len(run_tests.discover())
+
 
 prs = Presentation(SRC)
 
@@ -91,97 +120,121 @@ def add_table(slide, name, left, top, width, height, header, rows, widths=None,
     return tbl
 
 
+def clear_empty_placeholders(slide, keep=("Title 1",)):
+    """The shipped slides carry empty placeholders; remove them so added shapes are not
+    sitting on top of invisible-but-clickable boxes."""
+    for sh in list(slide.shapes):
+        if sh.is_placeholder and sh.name not in keep and (
+                not sh.has_text_frame or not sh.text_frame.text.strip()):
+            sh._element.getparent().remove(sh._element)
+
+
 # --------------------------------------------------------------------------- #
-# slide 3 - the explanation the author left as a heading only
+# slide 3 - the explanation slide: the validated figure is the argument
 # --------------------------------------------------------------------------- #
 s3 = prs.slides[2]
 drop_tagged(s3)
+clear_empty_placeholders(s3)
 
-# The slide shipped with an EMPTY PICTURE placeholder on the right (a figure slot) and no
-# text body at all. There is no figure in the repo I can verify the contents of, so rather
-# than guess at one for a shared deck this lays the slide out as table-left / text-right
-# and leaves the figure decision to the author.
-for sh in list(s3.shapes):
-    if sh.is_placeholder and sh.name != "Title 1" and (
-            not sh.has_text_frame or not sh.text_frame.text.strip()):
-        sh._element.getparent().remove(sh._element)
+# The Title placeholder ships 1.45 in tall for a single line of text, so its bounding box
+# runs under the content. Tighten it to its actual text height so the layout geometry is
+# honest and nothing sits inside another shape's box.
+for sh in s3.shapes:
+    if sh.name == "Title 1":
+        sh.height = Inches(0.80)
 
 add_table(
     s3, "SATX_S3_TABLE",
-    left=838200, top=1900000, width=3250000, height=1750000,
+    left=Inches(0.40), top=Inches(1.55), width=Inches(3.75), height=Inches(1.55),
     header=["Shared MPPT pair", "Saturated", "Severe"],
-    rows=[["eu_8 + eu_16", "386.6 h", "7.1 h"],
-          ["eu_10 + eu_18", "539.8 h", "13.0 h"],
-          ["eu_13 + eu_21", "342.8 h", "7.2 h"],
-          ["Total", "1,269.2 h", "27.3 h"]],
-    widths=[40, 32, 28], size=11,
+    rows=[[r[0], hrs(r[1]), hrs(r[2])] for r in PAIR_ROWS]
+         + [["Total", hrs(F["canonical_rows"]), hrs(F["canonical_severe_rows"])]],
+    widths=[42, 30, 28], size=10.5, header_size=10.5,
 )
 
-s3_body = add_box(s3, "SATX_S3_BODY", 4400000, 1700000, 5500000, 4600000)
+s3_body = add_box(s3, "SATX_S3_BODY", Inches(0.40), Inches(3.30), Inches(3.75), Inches(3.7))
 write_lines(s3_body.text_frame, [
-    ("Saturation: the pair sum stops rising while irradiance keeps rising -- the shared "
-     "MPPT has run out of headroom, so available energy is lost.", 0, False, INK),
-    ("Shared MPPT channels (confirmed with the site):", 0, True, INK),
-    ("eu_8 + eu_16      eu_10 + eu_18      eu_13 + eu_21", 1, False, ACCENT),
-    ("Detection (vat-v1):", 0, True, INK),
-    ("expected = theta(t) * ref,   deficit = 1 - measured / expected", 1, False, MUTED),
-    ("moderate = deficit > 15 % for 15 min, at ref >= 0.70", 1, False, MUTED),
-    ("severe = deficit > 30 % for 30 min", 1, False, MUTED),
-    ("The model is physical, not fitted: theta recovers the 9.0 kW string rating to within 4 % "
-     "across all 23 units (median 8.85 kW).", 0, False, INK),
-    ("Independent, non-shared pairs stay clean -- two of the three flag exactly zero.", 0, True, INK),
-], size=12)
+    ("What saturation is", 0, True, ACCENT),
+    ("The pair sum stops rising while irradiance keeps rising: the shared MPPT has run out "
+     "of headroom and energy is lost.", 0, False, INK),
+    ("Detection (vat-v1)", 0, True, ACCENT),
+    ("expected = theta(t) * ref", 1, False, MUTED),
+    ("deficit = 1 - measured / expected", 1, False, MUTED),
+    ("moderate: > 15 % for 15 min", 1, False, MUTED),
+    ("severe: > 30 % for 30 min", 1, False, MUTED),
+    ("moderate tier vs the published method: "
+     f"{F['published_hours']:,.1f} h -> {F['canonical_hours']:,.1f} h "
+     f"({F['row_change_pct']:+.1f} %).", 0, False, INK),
+], size=10)
+
+# the figure slot the slide shipped with, now filled with the validated evidence.
+# Sized so the bottom edge clears the caption: width 8.20 in on a 1690x1170 figure is
+# 5.68 in tall, so 1.30 + 5.68 = 6.98 and the caption sits below it.
+if os.path.exists(FIGURE):
+    s3.shapes.add_picture(FIGURE, Inches(4.32), Inches(1.30), width=Inches(8.20)).name = \
+        "SATX_S3_FIG"
+    cap = add_box(s3, "SATX_S3_CAP", Inches(4.32), Inches(7.02), Inches(8.20), Inches(0.40))
+    write_lines(cap.text_frame, [
+        ("Four independent validations: (a) normalisation-free peer comparison on real data, "
+         "(b) the inverter topology natural experiment, (c) the 9.0 kW nameplate cross-check, "
+         "(d) injected ground truth.", 0, False, MUTED)], size=9)
+else:
+    print("  WARNING: figure missing, run step25_validated_evidence.py")
 
 # --------------------------------------------------------------------------- #
 # slide 4 - the corrected numbers
 # --------------------------------------------------------------------------- #
 s4 = prs.slides[3]
 drop_tagged(s4)
-
-# the slide shipped with an empty full-bleed placeholder: remove it so the table below is
-# not sitting on top of an invisible-but-clickable box
-for sh in list(s4.shapes):
-    if sh.is_placeholder and (
-            not sh.has_text_frame or not sh.text_frame.text.strip()):
-        sh._element.getparent().remove(sh._element)
+clear_empty_placeholders(s4, keep=())
 
 title = add_box(s4, "SATX_S4_TITLE",
                 Inches(0.70), Inches(0.30), Inches(12.0), Inches(0.75))
 write_lines(title.text_frame, [
-    ("Corrected numbers: 13 % fewer flagged hours, severe tier overstated 2.9x, "
-     "energy bias floor 47 % -> 7 %", 0, True, INK),
-], size=20)
+    (f"Corrected numbers: {abs(F['row_change_pct']):.0f} % fewer flagged hours, severe tier "
+     f"overstated {F['severe_inflation_x']:.2f}x, energy bias floor "
+     f"{E['bias_floor_published_pct']} % -> {E['bias_floor_canonical_pct']} %", 0, True, INK),
+], size=19)
 
+PUB_ROW = {}
+for a, b in __import__("bench").PAIRS:
+    k = f"{a}_{b}".replace("+", "_")
+    PUB_ROW[f"{a} + {b}"] = F["per_pair"][k]
 add_table(
     s4, "SATX_S4_TABLE",
     left=Emu(643467), top=Inches(1.35), width=Emu(10905066), height=Inches(2.0),
     header=["Shared pair", "published", "corrected", "published severe", "corrected severe"],
-    rows=[["eu_8 + eu_16", "473.3 h", "386.6 h", "30.7 h", "7.1 h"],
-          ["eu_10 + eu_18", "592.6 h", "539.8 h", "27.8 h", "13.0 h"],
-          ["eu_13 + eu_21", "394.0 h", "342.8 h", "20.2 h", "7.2 h"],
-          ["Total", "1,459.9 h", "1,269.2 h", "78.7 h", "27.3 h"]],
+    rows=[[r[0], hrs(PUB_ROW[r[0]]["published_rows"]), hrs(PUB_ROW[r[0]]["canonical_rows"]),
+           hrs(PUB_ROW[r[0]]["published_severe_rows"]),
+           hrs(PUB_ROW[r[0]]["canonical_severe_rows"])] for r in PAIR_ROWS]
+         + [["Total", hrs(F["published_rows"]), hrs(F["canonical_rows"]),
+             hrs(F["published_severe_rows"]), hrs(F["canonical_severe_rows"])]],
     widths=[26, 18, 18, 19, 19], size=13, header_size=12,
 )
 
 body = add_box(s4, "SATX_S4_BODY",
                Inches(0.70), Inches(3.75), Inches(12.0), Inches(3.0))
 write_lines(body.text_frame, [
-    ("Apparent lost energy at ref >= 0.70 is 6,120 kWh. The published figure was 7,131 kWh, "
-     "but 47 % of it was baseline bias -- independent pairs that cannot saturate were 'losing' "
-     "energy too. The corrected bias floor is 7 %.", 0, False, INK),
-    ("The seasonal shape is unchanged (May-Jul peak, plus the cold-February clear-day peak), and "
-     "every published conclusion survives. Only the magnitudes were inflated.", 0, False, INK),
-    ("Canonical artefact: saturation_flags.csv, 51,005 x 21, regenerated from vat-v1. Guarded by "
-     "44 regression tests -- 43 passing, 1 documenting the old method's known control-pair bias.",
+    (f"Apparent lost energy over the detector gate domain "
+     f"(ref >= 0.70 and s > 0.6*expected) is {E['shared_canonical_kwh']:,} kWh. The "
+     f"published figure was {E['shared_published_kwh']:,} kWh, but "
+     f"{E['bias_floor_published_pct']} % of it was baseline bias -- independent pairs that "
+     f"cannot saturate were 'losing' energy too. The corrected bias floor is "
+     f"{E['bias_floor_canonical_pct']} %.", 0, False, INK),
+    ("The seasonal shape is unchanged (May-Jul peak, plus the cold-February clear-day peak), "
+     "and every published conclusion survives. Only the magnitudes were inflated.", 0, False, INK),
+    (f"Canonical artefact: saturation_flags.csv ({S['record_rows']:,} x 21), regenerated from "
+     f"vat-v1 and locked by sat_work/canonical/CANONICAL_vat-v1.json. Guarded by "
+     f"{test_count()} regression tests.", 0, False, MUTED),
+    ("Known limitation: the raw deficit column is only defined inside the decision domain "
+     "(ref >= 0.70, both units active, no data-quality flag); it is NaN elsewhere by design.",
      0, False, MUTED),
-    ("Known limitation: an unfiltered mean over the raw deficit column is not meaningful -- the "
-     "column is only defined inside the ref >= 0.70 gate.", 0, False, MUTED),
 ], size=13)
 
 prs.save(SRC)
 print("wrote", SRC)
-print("slides:", len(prs.slides))
-for i, s in enumerate(prs.slides, 1):
-    added = [sh.name for sh in s.shapes if sh.name.startswith("SATX_")]
-    if added:
-        print(f"  slide {i}: added {added}")
+print(f"  slide 3: saturated hours {F['canonical_hours']:,.1f} h, severe "
+      f"{F['canonical_severe_hours']:,.1f} h, figure {'placed' if os.path.exists(FIGURE) else 'MISSING'}")
+print(f"  slide 4: {F['published_hours']:,.1f} h -> {F['canonical_hours']:,.1f} h, "
+      f"severe {F['published_severe_hours']:,.1f} h -> {F['canonical_severe_hours']:,.1f} h")
+print(f"  tests counted: {test_count()}")

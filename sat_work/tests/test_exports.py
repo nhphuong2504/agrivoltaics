@@ -98,6 +98,43 @@ def test_export_deficit_is_finite_or_nan():
         assert len(bad) == 0, f"{k}_deficit has {len(bad)} non-finite values"
 
 
+def test_export_deficit_is_nan_outside_the_decision_domain():
+    """The same safety property, asserted on the pure function rather than the file."""
+    ex = bench.build_export()
+    df, fe = bench.raw_df(), bench.raw_fe()
+    ref = fe["ref"]
+    for k, (a, b) in zip(PAIR_KEYS, bench.PAIRS):
+        domain = (fe["active"][a] & fe["active"][b] & (ref >= bench.REF_ON)
+                  & ~bench.dq_mask(fe, a, b)).to_numpy()
+        col = ex[f"{k}_deficit"].to_numpy()
+        assert np.isnan(col[~domain]).all(), f"{k}_deficit populated outside the domain"
+
+
+def test_masking_changes_no_flag_so_the_safety_fix_is_free():
+    """The downstream-safety fix must move NO number a consumer would report.
+
+    Masking the deficit column to NaN outside the decision domain is a *presentation*
+    change to a continuous column. Every `*_sat_*` flag is decided by `gate`, and the gate
+    is a strict subset of the domain, so no flag can be touched. This asserts the
+    byte-identity directly instead of trusting the subset argument, because "this fix is
+    free" is exactly the kind of claim that rots: if someone ever widens the domain without
+    widening the gate, the masking would start deleting severity information and the
+    headline counts would drift silently.
+    """
+    masked = bench.build_export(mask_below_gate=True)
+    unmasked = bench.build_export(mask_below_gate=False)
+    assert masked.shape == unmasked.shape
+    flag_cols = [c for c in masked.columns if "_sat_" in c]
+    assert flag_cols, "expected flag columns in the export"
+    for c in flag_cols + ["time", "dq_site_outage"]:
+        assert masked[c].equals(unmasked[c]), f"masking altered flag column {c}"
+    # and the non-flag payload really did change, so this is not vacuously true
+    for k in PAIR_KEYS:
+        c = f"{k}_deficit"
+        assert not masked[c].equals(unmasked[c]), f"{c} was not actually masked"
+        assert int(masked[c].notna().sum()) < int(unmasked[c].notna().sum())
+
+
 def test_canonical_flags_csv_contains_no_infinities():
     """The canonical artefact must be safe for .mean() / .sum() / regression.
 
@@ -111,50 +148,55 @@ def test_canonical_flags_csv_contains_no_infinities():
 
 
 def test_canonical_deficit_is_well_formed_inside_the_decision_domain():
-    """Inside the gate the published deficit column must be a sane, bounded severity.
+    """Inside the domain the deficit must be a sane, bounded severity.
 
     `deficit = 1 - s/(theta*ref)` is >= 1 only when s <= 0 and <= 1 by construction, so
-    inside the decision domain it belongs to [-1, 1]. It has to be checked HERE rather
-    than over the whole column because below the gate `theta*ref` approaches zero and the
-    ratio blows up -- the below-gate tail reaches about -260, which is exactly why the
-    bound is scoped to the domain where the detector actually decides.
+    inside the decision domain it belongs to [-1, 1]. It has to be checked on the DECISION
+    DOMAIN rather than the in-gate region because the domain additionally excludes inactive
+    and DQ-flagged rows, where the pair sum is not a measurement of anything.
 
-    Measured in-gate: min -0.141, max 1.0000 across the three pairs. The published
-    formulation violated this even in-gate (its deficit reached -0.49 in December on a
-    control pair, review section 3.10).
+    Measured in-domain: min -0.141, max 1.0000 across the three pairs. The published
+    formulation violated this even in-domain (its control-pair December deficit reached
+    -0.49, review section 3.10).
     """
     can = _canonical()
-    inside = can["ref"] >= bench.REF_ON
-    assert inside.sum() > 10_000, "expected a substantial in-gate region"
     for key in PAIR_KEYS:
-        col = can.loc[inside, f"{key}_deficit"].dropna()
-        assert len(col) > 1_000, f"{key}_deficit is empty inside the gate"
+        col = can[f"{key}_deficit"].dropna()
+        assert len(col) > 1_000, f"{key}_deficit is empty inside the domain"
         assert col.min() >= -1.0, (
-            f"{key}_deficit is {col.min():.3f} inside the gate -- below the physical "
+            f"{key}_deficit is {col.min():.3f} inside the domain -- below the physical "
             f"floor of -1, so the baseline is under-predicting there")
         assert col.max() <= 1.0 + 1e-9, (
-            f"{key}_deficit is {col.max():.3f} inside the gate -- above the ceiling of 1")
+            f"{key}_deficit is {col.max():.3f} inside the domain -- above the ceiling of 1")
 
 
-def test_canonical_deficit_tail_is_confined_below_the_gate():
-    """Documents the residual defect so it is never mistaken for valid data.
+def test_canonical_deficit_is_nan_outside_the_decision_domain():
+    """The downstream-safety guarantee: no meaningless value is ever published.
 
-    Any deficit beyond the physical range must sit at low irradiance, where no flag can
-    be set and where `deficit` is not a meaningful severity. If this ever fails, the tail
-    has leaked into the decision domain and is corrupting the flags.
+    Before this masking the column carried large *finite* negatives at low irradiance
+    (down to about -260, where `theta*ref -> 0`), which are strictly better than the
+    published `-inf` but still make an unfiltered `.mean()` meaningless. The column is now
+    NaN wherever the detector would not decide, so the naive aggregate equals the
+    in-domain aggregate.
+
+    The domain must be exactly `act & ref >= REF_ON & ~dq_mask` -- the same one the AUC is
+    computed over, so every published rate shares a denominator.
     """
     can = _canonical()
-    for key in PAIR_KEYS:
-        col = can[f"{key}_deficit"]
-        beyond = col < -1.0
-        if not beyond.any():
-            continue
-        worst_ref = can.loc[beyond, "ref"].max()
-        assert worst_ref < 0.5, (
-            f"{key}_deficit goes below -1 at ref {worst_ref:.3f} -- the tail has moved "
-            f"into the decision domain")
-        flagged = int((can.loc[beyond, f"{key}_sat_moderate"] == 1).sum())
-        assert flagged == 0, f"{key}: {flagged} pathological rows are flagged"
+    df, fe = bench.raw_df(), bench.raw_fe()
+    ref = fe["ref"]
+    for key, (a, b) in zip(PAIR_KEYS, bench.PAIRS):
+        domain = (fe["active"][a] & fe["active"][b] & (ref >= bench.REF_ON)
+                  & ~bench.dq_mask(fe, a, b)).to_numpy()
+        col = can[f"{key}_deficit"].to_numpy()
+        assert np.isnan(col[~domain]).all(), (
+            f"{key}_deficit is populated on {int((~np.isnan(col[~domain])).sum())} rows "
+            f"outside the decision domain")
+        assert not np.isnan(col[domain]).all(), "domain masking threw away the signal"
+        # and the naive aggregate is therefore the in-domain aggregate
+        naive, indomain = np.nanmean(col), np.nanmean(col[domain])
+        assert abs(naive - indomain) < 1e-9, (
+            f"{key}: unfiltered mean {naive:.4f} != in-domain mean {indomain:.4f}")
 
 
 # --------------------------------------------------------------------------- #

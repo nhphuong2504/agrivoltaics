@@ -87,33 +87,57 @@ fig.suptitle("FIG 2 — The published baseline reports a growing deficit on a pa
 fig.tight_layout(); fig.savefig(OUT + r"\fig2_baseline.png"); plt.close(fig)
 
 # ------------------------------------------------- FIG 3: detector scoreboard
-S = pd.read_csv(OUT + r"\bench_results.csv")
-S = S[S["q"] != 1.0]
-ph = S[S.pattern == "episodic"]
-order = ["D1 rolling-slope", "D2 envelope-q90", "D5 control-calibrated",
-         "D4 ceiling-pinned", "D0 published", "D3 HMM-2state"]
+# Recomputed from the FROZEN harness (bench.DEFAULT_SCENARIOS + bench.DETECTORS) rather than
+# read from the stale bench_results.csv of step3's older 13-scenario matrix. Review section
+# 3.5 quotes this figure, so it and the table must come from the same scenarios, the same
+# detector implementations and the same evaluation domain. step23_metric_audit.py prints the
+# same table in text form.
+import bench as _B
+
+SCEN = _B.DEFAULT_SCENARIOS
+ORDER = ["D1 rolling-slope", "D2 envelope-q90", "D5 control-calibrated",
+         "D0 published", "D4 ceiling-pinned"]
+AUC = {k: [] for k in ORDER}
+FP = {k: [] for k in ORDER}
+for name, fn in _B.DETECTORS.items():
+    if name not in AUC:
+        continue
+    for s in SCEN:
+        r = _B.score_scenario(_B.scenario(*s), fn)
+        AUC[name].append(r["auc00"])          # None where the scenario has no positives
+        FP[name].append(r["fp_rows"])
+AUCm = {k: np.nanmean(np.array(v, dtype=float)) for k, v in AUC.items()}
+FPm = {k: np.nanmean(v) for k, v in FP.items()}
+N_POS = int(np.isfinite(np.array(AUC[ORDER[0]], dtype=float)).sum())
+
 fig, axes = plt.subplots(1, 2, figsize=(11.4, 4.2))
-w = 0.26
-for i, (col, lab) in enumerate([("auc00", "all clipped rows"), ("auc10", "clips > 10% deep"),
-                                ("auc20", "clips > 20% deep")]):
-    v = [S[S.det == k][col].mean() for k in order]
-    axes[0].bar(np.arange(len(order)) + (i - 1) * w, v, w, label=lab)
-axes[0].set_xticks(range(len(order)))
-axes[0].set_xticklabels([k.split(" ", 1)[0] for k in order])
+COLS = {"D1 rolling-slope": C["roll"], "D2 envelope-q90": C["env"],
+        "D5 control-calibrated": "#16a085", "D4 ceiling-pinned": "#7f8c8d",
+        "D0 published": C["pub"]}
+v = [AUCm[k] for k in ORDER]
+axes[0].bar(range(len(ORDER)), v, 0.6, color=[COLS[k] for k in ORDER])
 axes[0].axhline(0.5, color="k", lw=0.8, ls=":")
-axes[0].set_ylim(0.4, 1.03); axes[0].set_ylabel("AUC (mean over scenarios)")
-axes[0].set_title("Discrimination"); axes[0].legend(fontsize=8, loc="lower right")
-v = [S[S.det == k]["fp_rows"].mean() for k in order]
-axes[1].bar(range(len(order)), v, color=[C["roll"], C["env"], "#16a085", "#7f8c8d", C["pub"], "#95a5a6"])
-axes[1].set_xticks(range(len(order)))
-axes[1].set_xticklabels([k.split(" ", 1)[0] for k in order])
-axes[1].set_yscale("symlog")
-axes[1].set_ylabel("false-positive rows at ref ≥ 0.7 (mean)")
-axes[1].set_title("False alarms on unclipped days (symlog)")
 for i, val in enumerate(v):
-    axes[1].text(i, val * 1.25, f"{val:,.0f}", ha="center", fontsize=8)
+    axes[0].text(i, val + 0.008, f"{val:.3f}", ha="center", fontsize=8)
+axes[0].set_xticks(range(len(ORDER)))
+axes[0].set_xticklabels([k.split(" ", 1)[0] for k in ORDER])
+axes[0].set_ylim(0.4, 1.05)
+axes[0].set_ylabel("AUC, any clip (mean)")
+axes[0].set_title(f"Discrimination — mean over the {N_POS} scenarios with positives")
+axes[1].bar(range(len(ORDER)), [FPm[k] for k in ORDER], 0.6,
+            color=[COLS[k] for k in ORDER])
+axes[1].set_xticks(range(len(ORDER)))
+axes[1].set_xticklabels([k.split(" ", 1)[0] for k in ORDER])
+axes[1].set_yscale("symlog")
+axes[1].set_ylabel("false-positive rows at ref >= 0.7 (mean)")
+axes[1].set_title("False alarms on unclipped days (symlog)")
+for i, k in enumerate(ORDER):
+    axes[1].text(i, FPm[k] * 1.25, f"{FPm[k]:,.0f}", ha="center", fontsize=8)
 fig.suptitle("FIG 3 — Ground-truth benchmark (clipping injected into independent pairs). "
-             "Episodic clips, ref ≥ 0.70.", y=1.0, fontsize=10)
+             f"Mean over {'all' if N_POS == len(SCEN) else str(N_POS) + ' of ' + str(len(SCEN))} "
+             "scenarios; the no-clip scenario has no positives and is excluded.", y=1.0, fontsize=10)
 fig.tight_layout(); fig.savefig(OUT + r"\fig3_scoreboard.png"); plt.close(fig)
+print("fig3 AUC  :", {k: round(AUCm[k], 3) for k in ORDER})
+print("fig3 FP   :", {k: round(FPm[k]) for k in ORDER})
 
 print("wrote fig1_did.png fig2_baseline.png fig3_scoreboard.png")

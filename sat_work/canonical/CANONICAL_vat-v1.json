@@ -1,0 +1,137 @@
+{
+  "artefact": {
+    "columns": 21,
+    "deficit_values_outside_domain": 0,
+    "infinities": 0,
+    "path": "saturation_flags.csv",
+    "rows": 51005,
+    "sha256": "19e9f5467a5a72dd403a9ddf47d754dff07250106cecb01bcdb9f65623593203",
+    "tracked": false,
+    "tracked_reason": "generated product, gitignored by *.csv; rebuild with sat_work/research/recommended.py"
+  },
+  "definitions": {
+    "bias_floor": "control-pair apparent loss / shared-pair apparent loss, same gate",
+    "controls": "the three legacy control pairs; the cross-inverter pair is the only honest flag-level null",
+    "domain": "both units active AND ref >= 0.70 AND no DQ (the evaluate() test set)",
+    "energy_gate": "ref >= 0.70 AND s > 0.6*expected AND both active AND no DQ (the detector gate)",
+    "flagged_rows": "pooled over the three shared MPPT pairs",
+    "hours": "flagged rows / 12 (verified modal 5-min grid; sampled hours, not wall-clock, because acquisition gaps contribute no rows)"
+  },
+  "generated": "2026-09-14",
+  "method": {
+    "baseline": "rolling median of s/ref over a 31-day centred window",
+    "deficit_threshold_moderate": 0.15,
+    "deficit_threshold_severe": 0.3,
+    "definition": "deficit = 1 - s / (theta(t) * ref)",
+    "domain": "both units active AND ref >= 0.70 AND no DQ (the evaluate() test set)",
+    "energy_gate": "ref >= 0.70 AND s > 0.6*expected AND both active AND no DQ (the detector gate)",
+    "excluded_units": [
+      "eu_7"
+    ],
+    "expectation": "theta(t) * ref, theta in W",
+    "mppt_channels": [
+      "eu_10+eu_18",
+      "eu_13+eu_21",
+      "eu_8+eu_16"
+    ],
+    "near_cap": 0.6,
+    "null_bins": [
+      0.3,
+      1.05
+    ],
+    "null_calibration": "empirical control-pair quantile by ref bin",
+    "persistence_bridging_samples": 1,
+    "persistence_bridging_samples_severe": 0,
+    "persistence_moderate_samples": 3,
+    "persistence_severe_samples": 6,
+    "ref_on": 0.7,
+    "theta_calibration_band": [
+      0.35,
+      0.6
+    ],
+    "version": "vat-v1"
+  },
+  "metrics": {
+    "benchmark": {
+      "episodic_auc_canonical": 0.962,
+      "episodic_auc_published": 0.78,
+      "episodic_fp_canonical": 117,
+      "episodic_fp_published": 10202,
+      "specificity_gain_x": 87
+    },
+    "controls": {
+      "eu_15_eu_23": {
+        "canonical": 108,
+        "published": 106
+      },
+      "eu_1_eu_3": {
+        "canonical": 0,
+        "published": 16
+      },
+      "eu_4_eu_12": {
+        "canonical": 0,
+        "published": 0
+      }
+    },
+    "deficit_in_domain_range": {
+      "eu_10_eu_18": [
+        -0.1406,
+        1.0
+      ],
+      "eu_13_eu_21": [
+        -0.0285,
+        1.0
+      ],
+      "eu_8_eu_16": [
+        -0.0151,
+        1.0
+      ]
+    },
+    "domain_rows": {
+      "eu_10_eu_18": 11635,
+      "eu_13_eu_21": 8160,
+      "eu_8_eu_16": 8640
+    },
+    "energy": {
+      "bias_floor_canonical_pct": 7,
+      "bias_floor_published_pct": 47,
+      "control_canonical_kwh": 409,
+      "control_published_kwh": 3356,
+      "shared_canonical_kwh": 6120,
+      "shared_published_kwh": 7131
+    },
+    "flagged": {
+      "canonical_hours": 1269.2,
+      "canonical_rows": 15230,
+      "canonical_severe_hours": 27.3,
+      "canonical_severe_rows": 328,
+      "per_pair": {
+        "eu_10_eu_18": {
+          "canonical_rows": 6478,
+          "canonical_severe_rows": 156,
+          "published_rows": 7111,
+          "published_severe_rows": 334
+        },
+        "eu_13_eu_21": {
+          "canonical_rows": 4113,
+          "canonical_severe_rows": 87,
+          "published_rows": 4728,
+          "published_severe_rows": 243
+        },
+        "eu_8_eu_16": {
+          "canonical_rows": 4639,
+          "canonical_severe_rows": 85,
+          "published_rows": 5680,
+          "published_severe_rows": 368
+        }
+      },
+      "published_hours": 1459.9,
+      "published_rows": 17519,
+      "published_severe_hours": 78.8,
+      "published_severe_rows": 945,
+      "row_change_pct": -13.1,
+      "severe_inflation_x": 2.88
+    }
+  },
+  "version": "vat-v1"
+}

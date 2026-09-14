@@ -20,15 +20,27 @@ better-calibrated detector is proposed and verified.
 | 4 | `step4_synthesis.py` | Mechanism of the failure + a synthesised replacement |
 | 5 | `step5_calibration.py` | Measure the baseline's error on pairs that *cannot* saturate |
 | 6 | `step6_robustness.py` | Ranking vs hard/soft and constant/drifting limits |
-| 7 | `step7_figures.py` | Figures 1–3 |
+| 7 | `step7_figures.py` | Figures 1–3 (regenerated from the frozen harness, not stale CSVs) |
 | 8 | `step8_conclusions.py` | Does the correction change any published conclusion? |
 | – | `recommended.py` | Final detector, end to end, with exports |
+| – | `canon_metrics.py` | The single source of truth for every headline number |
+| – | `step22–step25` | Finalisation: deck fill, metric audit, version lock, validated figure |
 
 > **Reproduction is exact.** All 51,005 rows, all three `g0`, all flag counts
 > (5,680 / 7,111 / 4,728 rows; 473.3 / 592.6 / 394.0 h; 118 / 149 / 106 days;
 > 368 / 334 / 243 severe), the control separation (122 rows, 144×) and the whole
 > §7.3 sensitivity table reproduce to the decimal. Nothing in the report is
 > hand-waved — that is a real credit to the original work.
+
+**The summary figure** (`step25`). Four panels, four independent validations — a
+normalisation-free peer comparison on real data, the inverter-topology natural experiment,
+the 9.0 kW nameplate round-trip, and a ROC against injected ground truth. The first three
+establish that the problem is real and is located at the tracker; the fourth scores the
+detector that finds it. Panel (c) is the one I would defend hardest: the detector's slope
+reproduces a hardware rating that nothing in the analysis was ever fitted to.
+
+![The validated evidence: peer roll-off, the inverter-mates natural experiment, the
+nameplate round-trip, and a ground-truth ROC](sat_work/research/validated_evidence.png)
 
 ---
 
@@ -158,22 +170,39 @@ scaling is the whole effect.
 ### 3.3 Consequence: specificity collapses for intermittently-clipped pairs
 
 Clip-injection benchmark (`step3`, `step4`) — clipping injected into independent pairs,
-so positives are labelled ground truth and unclipped days give labelled negatives:
+so positives are labelled ground truth and unclipped days give labelled negatives. Single
+pair `eu_1+eu_3`, clamp at q = 0.75, false-positive rows on the **unclipped** days
+(recomputed on the frozen harness, `step23`):
 
-| duty cycle | published (D0) FP rows | rolling-slope (D1) FP rows |
-|---|---|---|
-| clip 35 % of days | **5,251** | **34** |
-| clip 65 % of days | 1,297 | 34 |
-| clip every day | 42 | 25 |
+| duty cycle | published (D0) FP rows | rolling-slope (D1) FP rows | ratio |
+|---|---|---|---|
+| clip 35 % of days | **4,922** | **6** | 820× |
+| clip 65 % of days | 1,285 | 17 | 76× |
+| clip every day | 12 | 25 | 0.5× |
 
-**150× more false positives** in the realistic intermittent regime. On unclipped days
-the published model simply claims saturation. Critically, **the published validation
-cannot see this**: its control pairs are never clipped, so the failure mode is never
-exercised.
+Pooled over the two episodic (35 % duty) scenarios the figures are **10,202 vs 117 rows =
+87×**. On unclipped days the published model simply claims saturation. Critically, **the
+published validation cannot see this**: its control pairs are never clipped, so the failure
+mode is never exercised.
+
+Three honest qualifications, because this number has been quoted badly:
+
+* **The ratio is very scenario-dependent** — 820× on `eu_1+eu_3`, 48× on `eu_15+eu_23`.
+  Quote the pooled 87× and the absolute row counts, not a single flattering scenario.
+* **In the chronic regime the order inverts**: vat-v1 flags 25 rows against the published
+  12. Bridging one-sample gaps (§3.13) is what adds them, and the chronic regime is the one
+  the benchmark can least well adjudicate. The claim this table supports is *not* "vat-v1
+  is better everywhere"; it is "the published detector's FP count collapses from thousands
+  to ~12 when the limit binds daily", which is exactly why a validation built on
+  never-clipped control pairs could not detect the defect.
+* An earlier draft quoted 150× from a superseded scenario set. It is 87× pooled on the
+  frozen harness.
 
 ### 3.4 The published energy-loss estimate is ~50 % bias
 
-Apparent lost energy at `ref ≥ 0.7` (`step5`, `recommended.py`):
+Apparent lost energy over the **detector gate domain** (`ref ≥ 0.70` *and*
+`s > 0.6·expected` *and* both units active *and* no DQ flag — `step5`, `recommended.py`, and
+now `step23`) — the earlier label "at `ref ≥ 0.7`" understated the domain:
 
 | | shared pairs | control pairs (**all bias**) | bias / signal |
 |---|---|---|---|
@@ -189,18 +218,32 @@ The published estimator assigns almost **half as much "lost energy" to pairs tha
 lose energy** as it does to the saturating pairs. Any downstream yield or ROI figure
 built on it inherits that bias.
 
-### 3.5 `deficit` is a poor discriminator of "is the constraint active"
+### 3.5 `deficit` is an imperfect discriminator of "is the constraint active"
 
-AUC against ground truth, stratified by how deep the clip is (threshold-free, so this is
-not a tuning artefact):
+AUC against injected ground truth, stratified by how deep the clip is (threshold-free, so
+this is not a tuning artefact). Recomputed on the frozen harness (`step23`); the previous
+version of this table was computed on a superseded scenario set and matched no current
+definition:
 
-| detector | any clip | >10 % | >20 % |
-|---|---|---|---|
-| **D1 rolling-slope** | **0.849** | **0.924** | **0.998** |
-| D2 envelope-q90 | 0.846 | 0.923 | 0.997 |
-| D5 control-calibrated | 0.782 | 0.909 | 0.966 |
-| D0 published | 0.782 | 0.878 | 0.979 |
-| D4 ceiling-pinned | 0.794 | 0.686 | 0.612 |
+| detector | episodic (the realistic regime) | any clip, 5 positive scenarios | >10 % | >20 % | mean FP rows |
+|---|---|---|---|---|---|
+| **D1 rolling-slope** | **0.962** | 0.934 | **0.994** | **0.999** | **30** |
+| D2 envelope-q90 | 0.957 | 0.932 | 0.993 | 0.997 | 45 |
+| D5 control-calibrated | 0.957 | **0.936** | 0.974 | 0.944 | 53 |
+| D0 published | 0.780 | 0.861 | 0.934 | 0.979 | 1,714 |
+| D4 ceiling-pinned | 0.493 | 0.797 | 0.556 | 0.584 | 785 |
+
+Denominators, stated because they change the answer: the *episodic* column is the mean
+over the two 35 %-duty scenarios, which is the regime the review argues is realistic; the
+*any clip / >10 % / >20 %* columns are the mean over the five benchmark scenarios that
+contain positives (the `q = 1.0` no-clip scenario has none by construction and is excluded
+rather than scored 0).
+
+**D1 leads on the episodic regime, on deep clips, and on false positives.** D5 edges it
+only on the pooled "any clip" column, where the chronic scenario is mixed in and where D5's
+score is a different quantity (excess over the control null, not a shortfall). D1 remains
+the canonical tier — that decision is frozen — but the honest reading is that D2 and D5 are
+close peers, not that D1 dominates everywhere.
 
 A relative-shortfall score is dominated by cloud dips at moderate `ref`, so it cannot
 cleanly answer "is the limit binding". At shallow clips the published detector is close
@@ -208,6 +251,11 @@ to its null. This is the honest reading of the published tiering: it is a **seve
 detector, not a **presence** detector, which the report does not say.
 
 ![Fig 3](sat_work/research/fig3_scoreboard.png)
+
+*Fig 3 is regenerated from the same frozen harness as the table above — same scenarios, same
+detector code, same evaluation domain — so the figure and the numbers cannot diverge
+(`step7_figures.py`; the same table in text form is printed by `step23_metric_audit.py`). The
+no-clip scenario has no positives and is excluded from the mean.*
 
 ### 3.6 Blind spot below the calibration band
 
@@ -302,12 +350,46 @@ The original published file is **not** kept as a parallel artefact. It is reprod
 `bench.det_published()` and from the committed notebook, and retaining a second result file
 would leave two silent sources of truth for the same numbers.
 
-**The residual, which is smaller but real.** Under vat-v1 the same dawn/dusk region still
-produces large *finite* negatives — about **−260** at worst, on 593 / 775 / 501 rows —
-because `θ(t)·ref → 0` there while `s > 0`. These are strictly better than `inf`: they are
-numbers, so an unfiltered `.mean()` over the column stays finite and near-sane
-(−0.04 / −0.09 / +0.04 against in-gate means of +0.25 / +0.18 / +0.29). But they are still
-not valid severity values, so two properties keep them harmless — both now machine-checked:
+**The residual, which is smaller but real — and now closed by masking.** Under vat-v1 the
+same dawn/dusk region still produced large *finite* negatives — about **−260** at worst, on
+593 / 775 / 501 rows per pair (1,869 in total) — because `θ(t)·ref → 0` there while `s > 0`.
+Strictly better than `inf`: the numbers are finite, so an unfiltered `.mean()` stayed
+finite and near-sane (−0.04 / −0.09 / +0.04 against in-domain means of +0.25 / +0.18 /
++0.29). But they were still not valid severity values.
+
+The canonical file now **masks the column to `NaN` outside the decision domain**, so the
+guarantee is structural rather than statistical:
+
+    domain = both units active  AND  ref ≥ 0.70  AND  no DQ flag
+
+That is deliberately the *same* expression `evaluate()` computes AUC over, so every
+published rate shares one denominator, and it is the detector's decision domain rather than
+the bare `ref ≥ 0.70` gate — masking on the gate alone would have thrown away genuinely deep
+deficits, since a pair can fall far short of expectation while still above `0.6·expected`.
+
+Measured consequences:
+
+| property | before masking | now |
+|---|---|---|
+| infinities | 0 | 0 |
+| populated values outside the domain (3 pairs) | 92,113 | **0** |
+| …of which below the physical floor `d < −1` | 1,869 | **0** |
+| in-domain deficit range | [−0.141, 1.000] | [−0.141, 1.000] |
+| unfiltered `.mean()` vs in-domain `.mean()` | −0.04 vs +0.25 | **identical** |
+
+Three tests enforce it, and they assert the *fixed* condition:
+`test_canonical_deficit_is_nan_outside_the_decision_domain` (including that the naive
+aggregate equals the in-domain one), the same property on the pure function
+(`test_export_deficit_is_nan_outside_the_decision_domain`), and
+`test_canonical_deficit_is_well_formed_inside_the_decision_domain`, which pins the physical
+bound `−1 ≤ d ≤ 1`. The published method violated that bound *inside* the domain — its
+control-pair December deficit reached −0.49 — which is exactly the §3.10 defect.
+
+**This changes no flag and no headline number.** The masked rows are below the gate, where
+no flag can be set: the `*_sat_*` columns are byte-identical before and after masking
+(verified), so the 17,519 → 15,230 row counts and every energy figure are untouched. What
+changes is the `deficit` column's usability: `.mean()`, `.sum()` and any regression over it
+now mean what a downstream consumer will assume they mean.
 
 * they are **confined below the gate**: the largest `ref` among them is **0.276**, against a
   gate of 0.70, and **none** of them is flagged
@@ -453,12 +535,13 @@ a systemic property of the published `expected`, not an artefact of which contro
 That is a stronger and simpler statement than the one this section made before the
 topology arrived.
 
-**Honest scope note on §3.3:** the 150× specificity gain is a *benchmark* number. On the
-three real control pairs the flag-level improvement is modest (122 → 108 rows total). The
-real-data win is in the magnitude of what gets claimed, and it is now measurable on a real
-null rather than three hand-picked pairs: across 117 independent pairs the published
-expectation fabricates a **median 803 kWh/pair** of phantom loss against **92 kWh/pair** for
-vat-v1 (§3.12). Do not quote the 150× as a real-data result.
+**Honest scope note on §3.3:** the 87× specificity gain is a *benchmark* number, and it is
+scenario-dependent (48–820× across the two episodic scenarios). On the three real control
+pairs the flag-level improvement is modest (122 → 108 rows total). The real-data win is in
+the magnitude of what gets claimed, and it is now measurable on a real null rather than
+three hand-picked pairs: across 117 independent pairs the published expectation fabricates
+a **median 803 kWh/pair** of phantom loss against **92 kWh/pair** for vat-v1 (§3.12). Do not
+quote the 87× as a real-data result.
 
 ### 3.13 The persistence rule: two failed ideas, then a rule with no real-data cost
 
@@ -555,8 +638,22 @@ conservative  = gate AND d > q_n(ref) AND (bridge within gate) AND 3 consecutive
 Implementation: `sat_work/research/recommended.py`. Its output is the **canonical artefact**
 `saturation_flags.csv` in the repo root, 51,005 × 21: every
 published v1 column, plus per pair `excess_vs_controls`, `null_d` and `sat_conservative`.
-Regenerate with `recommended.py`; `step21_canonical_summary.py` prints every number quoted
-below, so this section is reproducible rather than hand-copied.
+
+Regeneration is byte-deterministic (verified: two consecutive runs give the same sha256). The
+file is gitignored (`*.csv`), so reproducibility is locked by a small committed manifest
+instead —
+
+    sat_work/canonical/CANONICAL_vat-v1.json
+
+which records the method parameters, every headline metric with its denominator, and the
+artefact's sha256. `step24_canonical_manifest.py --check` verifies that lock, and
+`sat_work/tests/test_manifest.py` re-derives the metrics from the live file on every test
+run. The manifest is read from code, so a silent re-tune of `REF_ON`, a deficit threshold or
+the persistence rule fails the suite until the lock is regenerated explicitly.
+
+`step21_canonical_summary.py` prints every number quoted below, drawing them from
+`canon_metrics.summarise()` — the same function the manifest and the deck use — so this
+section, the canvas and the slides cannot drift apart.
 
 **What changes, and what does not** (`step8`, `step21`):
 
@@ -566,8 +663,8 @@ below, so this section is reproducible rather than hand-copied.
 | eu_10+eu_18 | 7,111 rows / 592.6 h | **6,478 / 539.8 h** | 27.8 h | **13.0 h** | 149 → 147, 145 shared, 2 new |
 | eu_13+eu_21 | 4,728 rows / 394.0 h | **4,113 / 342.8 h** | 20.2 h | **7.2 h** | 106 → 104, 102 shared, 2 new |
 
-Total **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %), and **78.7 h → 27.3 h**
-in the severe tier (2.9× inflation removed).
+Total **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %), and **78.8 h → 27.3 h**
+in the severe tier (2.88× inflation removed).
 
 * **Every published conclusion survives.** The affected days are almost a subset of the
   published ones (0–2 new days; 3–4 published-only). The seasonal shape is unchanged:
@@ -575,8 +672,8 @@ in the severe tier (2.9× inflation removed).
   the pair-off blocks.
 * **Magnitudes shrink 9–18 %** (−18.3 %, −8.9 %, −13.0 %), *after* the adopted
   gap-tolerant persistence rule has recovered +5.3 % of hours (§3.13). Without that rule
-  the shrink is 13–22 %. **The severe tier shrinks 2.1–4.3×** (78.7 h → 27.3 h overall,
-  2.9×) — unchanged from earlier drafts, because bridging is deliberately not applied
+  the shrink is 13–22 %. **The severe tier shrinks 2.1–4.3×** (78.8 h → 27.3 h overall,
+  2.88×) — unchanged from earlier drafts, because bridging is deliberately not applied
   there.
 * **July 2026 (eu_8+eu_16: 78.8 h → 46.0 h) is now explained and is not a defect** — it
   is a threshold boundary landing mid-population in the mildest month of the record. See
@@ -599,7 +696,7 @@ in the severe tier (2.9× inflation removed).
    notebook), not as a parallel result file.
 2. ~~**Re-state the counts.**~~ **DONE 2026-09.** The canonical artefact carries
    15,230 rows / 1,269.2 h against the published 17,519 / 1,459.9 h (−13.1 %), with the
-   severe tier down from 78.7 h to 27.3 h (2.9× inflation removed). The published bias
+   severe tier down from 78.8 h to 27.3 h (2.88× inflation removed). The published bias
    floor was 47 % of its energy figure; the canonical one is 7 %.
 3. ~~**Delete the `-inf` values.**~~ **DONE 2026-09.** Eliminated structurally by the vat-v1
    regeneration (they cannot occur) *and* fixed at the source in the notebook's export cell.
@@ -657,9 +754,16 @@ Requested audit of the two artefacts that consume this work (`step19`).
 
 So the deck needed filling, not correcting — slide 3 was an empty heading waiting for the
 analysis. **Filled 2026-09** with the regenerated §5 numbers: per-pair hours and severe
-hours, the 78.7 h → 27.3 h severe shrink, the bias floor (47 % → 7 % of the claimed
+hours, the 78.8 h → 27.3 h severe shrink, the bias floor (47 % → 7 % of the claimed
 energy), the §3.12 topology result, and the `θ` ≈ 9.0 kW nameplate cross-check. Slides 1–2
 were left untouched; slide 2's own numbers were already consistent with the analysis.
+
+Slide 3 now carries the **validated four-panel figure** (`step25`): the normalisation-free
+peer roll-off, the inverter-mates natural experiment, the nameplate round-trip, and the
+ground-truth ROC. That is the slide's whole job, so the figure goes there rather than a
+table. Slides 3–4 are generated by `step22_fill_deck.py` **from `canon_metrics`**, the same
+function behind the review, the canvas and the version lock, so the deck cannot drift from
+the artefact; re-running the script updates it in place.
 
 Slide 2 also produced the review's best validation (§2.7): the 9.0 kW nameplate matches
 `θ_u` to 4 % across all 23 units.
@@ -674,6 +778,11 @@ which units share a cover type — and it is the most promising remaining lead.
 
 ### 7.2 `SATURATION_DETECTION.md` — specific claims that change
 
+**Status 2026-09:** the doc now carries a "Superseded as the spec for `saturation_flags.csv`"
+banner, and the two worst rows below (§7.1 and §8.1) are annotated *in place* so a reader who
+lands mid-document cannot miss them. The rest is left as the accurate record of the published
+method — rewriting it would destroy exactly the reproducibility the review says to preserve.
+
 | § | claim as written | status |
 |---|---|---|
 | 7.1 | **"144× separation"**, 122 control rows vs 17,519 shared | separation is real but the 122 are **not** what the doc says |
@@ -682,7 +791,7 @@ which units share a cover type — and it is the most promising remaining lead.
 | 7.4 | "Severe events: 368 / 334 / 243 rows" | → **85 / 156 / 87 rows** (2.1–4.3× smaller; the tier most exposed to baseline bias) |
 | 7.3 | threshold-sensitivity table (473 / 593 / 394 at 0.15) | **recomputed** — see below |
 | 5.3 | `expected = g0 · cap(t) · ref` | → **`θ(t) · ref`** (§3.2). The doc's §10 already proposes this: *"`g0` is currently a global-per-pair scalar; making it rolling (31-day median of mid-ref gain) would track long-term soiling more tightly."* **`vat-v1` is that extension, not a departure from the method** |
-| 8.1 | `-inf` at `ref = 0` "division artifact; flags can never fire there — filter `ref ≥ 0.7`" | **disclosed, not hidden** — good practice. Eliminated structurally by the vat-v1 regeneration; the residual is finite, confined below the gate, and machine-checked (§3.9) |
+| 8.1 | `-inf` at `ref = 0` "division artifact; flags can never fire there — filter `ref ≥ 0.7`" | **disclosed, not hidden** — good practice. Eliminated structurally by the vat-v1 regeneration; the residual is finite, and the column is now **masked to NaN outside the decision domain**, so the "filter first" step is no longer needed either (§3.9). Annotated in place in the doc |
 | 2.1 | `eu_7` "on a different scale … treated as an odd/reference unit and excluded" | correct; now **confirmed by the site engineer as a technical fault** and guarded by `test_topology.py` |
 
 **Recomputed §7.3 — flagged hours vs the deficit cutoff** (`step20`). The doc's conclusion
@@ -707,6 +816,36 @@ benchmark's finding that injected severity caps near 0.25 (§8).
 Two things the doc gets right and the review preserves: the DQ screening is sound and
 carries over unchanged (§2.3), and section 4's `RELIABLE` list is exactly right, including
 `eu_7`'s exclusion.
+
+### 7.3 Metric audit — one definition, one denominator, each (`step23`)
+
+Requested audit of every headline number for definition and denominator consistency. It
+found four real problems, all fixed:
+
+| # | what was wrong | correction |
+|---|---|---|
+| 1 | §3.4's energy figure was labelled *"apparent lost energy at `ref ≥ 0.7`"* but computed over the **detector gate** (`ref ≥ 0.70` **and** `s > 0.6·expected` **and** active **and** no DQ). The label understated the domain | label corrected everywhere; `canon_metrics.GATE_DEF` is now the single definition |
+| 2 | the specificity gain had **three denominators in circulation**: 150× (a superseded scenario set), 154× (one scenario), and ~100× (the mean of two) | recomputed on the frozen harness: **87× pooled** over the 2 episodic scenarios (10,202 vs 117 rows), per-scenario 820× and 48×. Both the pooled figure *and* the absolute row counts are quoted, since the spread is 17× |
+| 3 | §3.5's AUC table matched **no current definition** — it came from an older scenario set. Adding to the confusion, the regression test asserts a different scenario set from the prose, so the two quoted AUCs legitimately differed | §3.5 rebuilt with the scenario set named: episodic (0.780 → 0.962) vs all positive scenarios (0.861 → 0.934). The noclip scenario is excluded from the mean rather than scored 0 |
+| 4 | the pooled severe total was **78.7 h** — the sum of per-pair hours already rounded to 1 dp | 78.8 h, summed from exact row counts (945 / 12). Pooled totals are now never rebuilt from rounded parts |
+
+Two structural changes came out of it, and they matter more than the four fixes:
+
+* **One denominator for every rate.** The canonical `deficit` column is masked to the same
+  `active ∧ ref ≥ 0.70 ∧ ¬DQ` domain that `evaluate()` computes AUC over (§3.9). Every
+  published rate — flag rates, the bias floor, the AUC — is now over one set, so they are
+  comparable by construction rather than by coincidence.
+* **One source of truth.** `canon_metrics.py` computes each headline number exactly once.
+  `step21` prints them, `step24` locks them, `step23` audits them, `step22` puts them in the
+  deck, and `tests/test_manifest.py` re-derives them from the live file. Four documents
+  cannot disagree, because none of them computes anything.
+
+A fifth, non-numeric finding, worth stating because it changes a claim rather than a number:
+**D1 is not the best detector on every denominator.** It leads on the episodic regime
+(0.962), on deep clips (0.999) and on false positives (30 rows), but D5 edges it on the
+pooled "any clip" column (0.936 vs 0.934). D1 stays canonical — that decision is frozen and
+D5 is a derivative of D1's own baseline — but the honest statement is "D1 leads in the regime
+that matters and ties elsewhere", not "D1 dominates".
 
 ---
 
@@ -740,13 +879,17 @@ carries over unchanged (§2.3), and section 4's `RELIABLE` list is exactly right
   costs 72 false-positive rows on the benchmark (108 → 180) for +5.0 pp recall. It is
   free on the real control pairs, but the benchmark disagrees, and the benchmark is the
   only place with ground truth. Quote both numbers.
-* **The canonical `deficit` column is only meaningful inside the gate.** It carries a large
-  *finite* negative tail below `ref ≈ 0.3` (down to about −260) where `θ(t)·ref → 0`. The
-  tail is confined below the gate, never flagged, and machine-checked — but it means an
-  unfiltered `.mean()` over the whole column is not a meaningful statistic (it returns
-  −0.04 / −0.09 / +0.04 against in-gate means of +0.25 / +0.18 / +0.29). Filter as
-  `SATURATION_DETECTION.md` §8.1 already prescribes, or take the one-line masking option in
-  §3.9.
+* ~~**The canonical `deficit` column is only meaningful inside the gate.**~~ **Closed
+  2026-09 by masking.** The column was carrying a large *finite* negative tail below
+  `ref ≈ 0.3` (down to about −260) where `θ(t)·ref → 0` — harmless to read, but meaningless
+  to average. It is now `NaN` outside the decision domain
+  (`active ∧ ref ≥ 0.70 ∧ ¬DQ`), so an unfiltered `.mean()` is *identically* the in-domain
+  mean and the "filter first" instruction is no longer needed. 92,113 stray values → 0, with
+  the flag columns proven byte-identical before and after
+  (`test_masking_changes_no_flag_so_the_safety_fix_is_free`). The residual limitation is the
+  honest one: **the domain is narrow** — 8,160–11,635 rows per pair, 16–23 % of the record —
+  so a consumer who wants a whole-day severity has to compute one, and the column will not
+  quietly supply it.
 
 ---
 
@@ -779,14 +922,23 @@ sat_work/
     step19_docs_audit.py   downstream-artefact audit + the 9.0 kW nameplate check
     step20_sensitivity.py  recomputed threshold sensitivity; retired the -inf values
     step21_canonical_summary.py  the canonical artefact's headline numbers
+    step22_fill_deck.py    fills power_production.pptx from canon_metrics (idempotent)
+    step23_metric_audit.py every headline metric with its definition and denominator
+    step24_canonical_manifest.py  writes / --check verifies the version lock
+    step25_validated_evidence.py  the four-panel validated figure for the deck
+                                  -> validated_evidence.png
+    canon_metrics.py       THE source of truth the summary, manifest, audit and deck share
     recommended.py         vat-v1 end to end -> the canonical saturation_flags.csv
     bench_results.csv, bench_synthesis.csv, bench_robustness.csv,
     baseline_calibration.csv, energy_estimate.csv, july_forensic.csv
+  canonical/
+    CANONICAL_vat-v1.json  THE VERSION LOCK: method, metrics, artefact sha256
   tests/
-    run_tests.py           dependency-free runner: 43 tests, ~4 s, exit code 0 when green
+    run_tests.py           dependency-free runner: 51 tests, ~4 s, exit code 0 when green
     test_detectors.py      detector accuracy on injected ground truth
-    test_exports.py        data-product contracts (the -inf and deficit-bound guards live here)
+    test_exports.py        data-product contracts (the -inf, masking and bound guards)
     test_topology.py       fleet mapping; eu_7's exclusion; the cross-inverter null guard
+    test_manifest.py       re-derives the headline metrics from the live artefact
     _helpers.py            scenario accessors + known_failure marker
     conftest.py            pytest support, if pytest is ever installed
 ```
@@ -796,11 +948,19 @@ The data products, at the repo root:
 ```
 saturation_flags.csv            THE CANONICAL FLAGS ARTEFACT (vat-v1). 51,005 x 21.
                                   Regenerate: python sat_work/research/recommended.py
+                                  Gitignored; locked by canonical/CANONICAL_vat-v1.json
 data_quality_events.csv         DQ event log (unchanged)
+power_production.pptx           deck; slides 3-4 are generated by step22_fill_deck.py
+                                  (the validated figure is EMBEDDED in the file, so the
+                                  deck is self-contained even though *.png is gitignored)
 saturation_detection.ipynb      the PUBLISHED method, retained and committed. It is the
                                   reproducible record of the old outputs; its export cell
                                   is patched so a re-run cannot reintroduce -inf.
 ```
+
+Every `*.png` figure is generated rather than committed (`*.png` is gitignored), so a fresh
+clone shows broken image links in this document until `step7_figures.py` and
+`step25_validated_evidence.py` are run. The deck is unaffected: its figure is embedded.
 
 Run the suite with:
 
@@ -810,11 +970,12 @@ Run the suite with:
 ./venv/Scripts/python.exe sat_work/tests/run_tests.py -k export
 ```
 
-Status at hand-off: **43 passed, 0 failed, 1 xfailed, 0 xpassed**. The single expected
-failure is `test_published_detector_is_biased_on_control_pairs` — the published *method*
-flags intact independent pairs, which is real and unfixed, because the fix is to stop using
-the published method rather than to patch it. It flips to a pass only if `det_published` is
-replaced; the runner prints an XPASS notice telling you to remove the marker.
+Status at hand-off: **50 passed, 0 failed, 1 xfailed, 0 xpassed** (51 tests). The single
+expected failure is `test_published_detector_is_biased_on_control_pairs` — the published
+*method* flags intact independent pairs, which is real and unfixed, because the fix is to
+stop using the published method rather than to patch it. It flips to a pass only if
+`det_published` is replaced; the runner prints an XPASS notice telling you to remove the
+marker.
 
 The two data-product xfails that used to sit alongside it are both resolved. The `-inf`
 values were regenerated away, and the seasonal mis-scaling of the continuous column went
