@@ -1,0 +1,74 @@
+\relax 
+\@writefile{toc}{\contentsline {section}{\numberline {I}Results}{1}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {I-A}}Detection of Shared-MPPT Saturation}{1}{}\protected@file@percent }
+\newlabel{subsec:mppt_saturation}{{\mbox  {I-A}}{1}{}{subsection.1.1}{}}
+\newlabel{sss:mppt_site}{{\mbox  {I-A}1}{1}{}{subsubsection.1.1.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}1}Site, record and topology}{1}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Array topology. Units sharing an MPPT channel share a tracker and therefore a power ceiling.}}{1}{}\protected@file@percent }
+\newlabel{tab:mppt_topology}{{I}{1}{}{table.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Data-quality exclusions. The first four are evaluated per unit and per timestamp; the activity mask is evaluated per unit and per day. Any single condition disqualifies. Shares are of the $1{,}846{,}392$ unit-timestamp cells in the record, except \textsc  {outage}, which is site-wide and is quoted as a share of the $76{,}933$ timestamps.}}{1}{}\protected@file@percent }
+\newlabel{tab:mppt_dq}{{II}{1}{}{table.2}{}}
+\newlabel{sss:mppt_ref}{{\mbox  {I-A}2}{1}{}{subsubsection.1.1.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}2}Fleet-median irradiance proxy}{1}{}\protected@file@percent }
+\newlabel{eq:mppt_ref}{{1}{1}{}{equation.1}{}}
+\newlabel{sss:mppt_stat}{{\mbox  {I-A}3}{1}{}{subsubsection.1.1.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}3}The saturation statistic}{1}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces The evidence chain for shared-MPPT saturation. (a)~Normalisation-free peer comparison on real data (Section~\ref {sss:mppt_rolloff}). (b)~The inverter-topology natural experiment (Section~\ref {sss:mppt_tracker}). (c)~The $9.0$\,kW nameplate cross-check (Section~\ref {sss:mppt_nameplate}). (d)~ROC against injected ground truth (Section~\ref {sss:mppt_bench}). Panels~(a)--(c) establish that the constraint is real and is located at the tracker; panel~(d) scores the detector that finds it.}}{2}{}\protected@file@percent }
+\newlabel{fig:mppt_evidence}{{1}{2}{}{figure.1}{}}
+\newlabel{eq:mppt_theta_day}{{2}{2}{}{equation.2}{}}
+\newlabel{eq:mppt_theta}{{3}{2}{}{equation.3}{}}
+\newlabel{eq:mppt_deficit}{{4}{2}{}{equation.4}{}}
+\newlabel{sss:mppt_domain}{{\mbox  {I-A}4}{2}{}{subsubsection.1.1.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}4}Decision domain and gating}{2}{}\protected@file@percent }
+\newlabel{eq:mppt_domain}{{5}{2}{}{equation.5}{}}
+\newlabel{eq:mppt_gate}{{6}{2}{}{equation.6}{}}
+\newlabel{sss:mppt_rule}{{\mbox  {I-A}5}{2}{}{subsubsection.1.1.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}5}Saturation decision rule}{2}{}\protected@file@percent }
+\newlabel{eq:mppt_flag_threshold}{{7}{2}{}{equation.7}{}}
+\newlabel{subsubsec:mppt_algorithms}{{\mbox  {I-A}6}{2}{}{subsubsection.1.1.6}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}6}Algorithms}{2}{}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces \textsc  {vat-v1}: continuous saturation deficit}}{3}{}\protected@file@percent }
+\newlabel{alg:mppt_deficit}{{1}{3}{}{algorithm.1}{}}
+\newlabel{sss:mppt_validation}{{\mbox  {I-A}7}{4}{}{subsubsection.1.1.7}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}7}Validation design}{4}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Clip-injection scenarios. The clamp is placed at $0.75\,p_{95}$, where $p_{95}$ is the $95$th percentile of the pair sum over clear-sky rows ($r \ge 0.85$); this caps injected severity at $d \approx 0.25$.}}{4}{}\protected@file@percent }
+\newlabel{tab:mppt_scenarios}{{III}{4}{}{table.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Median normalised pair-output ratio against a peer pair, in $r$ bins, rescaled to $1$ in $r \in [0.35,\,0.60]$. No $\theta $, no fitted parameter and no $r$ in the denominator enters the statistic. EU1+EU3 is the peer denominator here, so its own trace is unity by construction and is drawn only for reference; the informative controls are EU4+EU12 and EU15+EU23.}}{4}{}\protected@file@percent }
+\newlabel{fig:mppt_rolloff}{{2}{4}{}{figure.2}{}}
+\newlabel{sss:mppt_rolloff}{{\mbox  {I-A}8}{4}{}{subsubsection.1.1.8}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}8}The roll-off is real and is not an artefact of the reference}{4}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Median normalised pair-output ratio against peer pairs over all samples with $r \ge 0.70$. No fitted parameter enters the statistic. The peer is EU1+EU3, except for EU1+EU3 itself, which is referred to EU4+EU12.}}{5}{}\protected@file@percent }
+\newlabel{tab:mppt_peer}{{IV}{5}{}{table.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces (a)~Median deficit per $r$ bin, averaged over each class of pairs. Open markers are the model-free peer-ratio measurement; solid lines are the detector. (b)~The disagreement, drawn at its own scale.}}{5}{}\protected@file@percent }
+\newlabel{fig:mppt_calibration}{{3}{5}{}{figure.3}{}}
+\newlabel{sss:mppt_calibration}{{\mbox  {I-A}9}{5}{}{subsubsection.1.1.9}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}9}The model is calibrated against a model-free measurement}{5}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Inverter-topology natural experiment. Entries are median per-unit deficits at $r \ge 0.75$: for the pair, the median over its two units; for the mates, the median over the independent units on the same inverter.}}{5}{}\protected@file@percent }
+\newlabel{tab:mppt_inverter}{{V}{5}{}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {VI}{\ignorespaces Estimated slope $\theta $ against the documented $9.0$\,kW string rating, over the $23$ healthy units. The nameplate entered the analysis only after the detector was frozen.}}{5}{}\protected@file@percent }
+\newlabel{tab:mppt_nameplate}{{VI}{5}{}{table.6}{}}
+\newlabel{sss:mppt_tracker}{{\mbox  {I-A}10}{5}{}{subsubsection.1.1.10}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}10}The constraint is at the tracker, not the inverter}{5}{}\protected@file@percent }
+\newlabel{sss:mppt_nameplate}{{\mbox  {I-A}11}{5}{}{subsubsection.1.1.11}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}11}The detector's slope reproduces the hardware rating}{5}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Four candidate detectors on the clip-injection benchmark. The positives are injected labels rather than model output, so this scores the detector rather than asserting it.}}{6}{}\protected@file@percent }
+\newlabel{fig:mppt_scoreboard}{{4}{6}{}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {VII}{\ignorespaces Candidate detectors on the clip-injection benchmark. AUC is computed threshold-free on the decision domain \eqref  {eq:mppt_domain}; chance is $0.5$.}}{6}{}\protected@file@percent }
+\newlabel{tab:mppt_bench}{{VII}{6}{}{table.7}{}}
+\newlabel{sss:mppt_bench}{{\mbox  {I-A}12}{6}{}{subsubsection.1.1.12}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}12}Performance against injected ground truth}{6}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {VIII}{\ignorespaces Flagged exposure under the adopted \texttt  {sat} rule, in rows and sampled hours (rows${}/{}12$). Flagged days are distinct calendar days carrying at least one saturation flag; the three pairs overlap, so the union is $244$ days rather than the column sum.}}{6}{}\protected@file@percent }
+\newlabel{tab:mppt_hours}{{VIII}{6}{}{table.8}{}}
+\newlabel{sss:mppt_results}{{\mbox  {I-A}13}{6}{}{subsubsection.1.1.13}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}13}Saturation in the array}{6}{}\protected@file@percent }
+\newlabel{sss:mppt_residual}{{\mbox  {I-A}14}{6}{}{subsubsection.1.1.14}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}14}Residual model error}{6}{}\protected@file@percent }
+\newlabel{sss:mppt_robust}{{\mbox  {I-A}15}{6}{}{subsubsection.1.1.15}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}15}Robustness and sensitivity}{6}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {IX}{\ignorespaces Threshold-sensitivity sweep. Flagged sampled hours per shared pair, and the relative drop at each step.}}{7}{}\protected@file@percent }
+\newlabel{tab:mppt_threshold}{{IX}{7}{}{table.9}{}}
+\newlabel{sss:mppt_limits}{{\mbox  {I-A}16}{7}{}{subsubsection.1.1.16}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}16}Limitations}{7}{}\protected@file@percent }
+\newlabel{sss:mppt_repro}{{\mbox  {I-A}17}{7}{}{subsubsection.1.1.17}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {I-A}17}Reproducibility}{7}{}\protected@file@percent }
+\gdef \@abspage@last{7}

@@ -57,38 +57,32 @@ def load_canonical(path: str | None = None) -> pd.DataFrame:
 # metrics
 # --------------------------------------------------------------------------- #
 def flagged_counts(can: pd.DataFrame | None = None) -> dict:
-    """Flagged rows and sampled hours, published vs canonical.
+    """Flagged rows and sampled hours, published baseline vs the canonical flag.
 
     Denominator for the *hours* conversion is `SAMPLES_PER_HOUR`; acquisition gaps
     contribute no rows, so these are sampled hours present in the record, not wall-clock
     elapsed time.
 
     Pooled totals are summed from EXACT row counts. Summing per-pair hours that were
-    already rounded to 1 dp drifts (78.7 vs the true 78.8 severe hours).
+    already rounded to 1 dp drifts, which is why the totals are not the sum of the
+    per-pair display values.
     """
     can = load_canonical() if can is None else can
     df, fe = B.raw_df(), B.raw_fe()
     per = {}
     for a, b in B.PAIRS:
         k = f"{a}_{b}"
-        pub = B.detect(df, fe, a, b)
         per[k] = dict(
-            published_rows=int(pub["moderate"].sum()),
-            canonical_rows=int(can[f"{k}_sat_moderate"].astype(bool).sum()),
-            published_severe_rows=int(pub["severe"].sum()),
-            canonical_severe_rows=int(can[f"{k}_sat_severe"].astype(bool).sum()),
+            published_rows=int(B.detect(df, fe, a, b)["moderate"].sum()),
+            canonical_rows=int(can[f"{k}_sat"].astype(bool).sum()),
         )
-    tot = {f"{n}_{t}": sum(v[f"{n}_{t}"] for v in per.values())
-           for n in ("published", "canonical") for t in ("rows", "severe_rows")}
+    tot = {f"{n}_rows": sum(v[f"{n}_rows"] for v in per.values())
+           for n in ("published", "canonical")}
     out = dict(per_pair=per)
     for n in ("published", "canonical"):
         out[f"{n}_rows"] = tot[f"{n}_rows"]
         out[f"{n}_hours"] = round(tot[f"{n}_rows"] / SAMPLES_PER_HOUR, 1)
-        out[f"{n}_severe_rows"] = tot[f"{n}_severe_rows"]
-        out[f"{n}_severe_hours"] = round(tot[f"{n}_severe_rows"] / SAMPLES_PER_HOUR, 1)
     out["row_change_pct"] = round(100 * (out["canonical_rows"] / out["published_rows"] - 1), 1)
-    out["severe_inflation_x"] = round(out["published_severe_rows"]
-                                      / out["canonical_severe_rows"], 2)
     return out
 
 
@@ -156,7 +150,7 @@ def energy_per_pair() -> dict:
 
 
 def flagged_days(can: pd.DataFrame | None = None) -> dict:
-    """Distinct calendar days carrying at least one moderate flag, per pair.
+    """Distinct calendar days carrying at least one flag, per pair.
 
     A "day" is a local calendar day (`time.dt.normalize()`), and a day counts once however
     many 5-minute samples it contributes. Denomination is the day, not the sample.
@@ -164,7 +158,7 @@ def flagged_days(can: pd.DataFrame | None = None) -> dict:
     can = load_canonical() if can is None else can
     out = {}
     for a, b in B.PAIRS:
-        m = can[f"{a}_{b}_sat_moderate"].astype(bool)
+        m = can[f"{a}_{b}_sat"].astype(bool)
         out[f"{a}_{b}"] = int(can.loc[m, "time"].dt.normalize().nunique())
     return out
 
@@ -227,14 +221,13 @@ def method() -> dict:
         expectation="theta(t) * ref, theta in W",
         definition="deficit = 1 - s / (theta(t) * ref)",
         ref_on=B.REF_ON, near_cap=B.NEAR_CAP,
-        deficit_threshold_moderate=B.THR_MOD, deficit_threshold_severe=B.THR_SEV,
-        persistence_moderate_samples=B.PERS_MOD,
-        persistence_severe_samples=B.PERS_SEV,
+        deficit_threshold=B.THR_MOD,
+        persistence_samples=B.PERS_MOD,
         persistence_bridging_samples=B.PERS_GAP,
-        persistence_bridging_samples_severe=B.PERS_GAP_SEV,
-        null_bins=[round(float(B.BINS[0]), 2), round(float(B.BINS[-1]), 2)],
-        theta_calibration_band=[0.35, 0.60],
-        null_calibration="empirical control-pair quantile by ref bin",
+        theta_calibration_band=[float(B.BAND[0]), float(B.BAND[1])],
+        theta_window_days=B.THETA_WINDOW_DAYS,
+        theta_min_periods=B.THETA_MIN_PERIODS,
+        persistence_max_gap_min=B.PERS_MAX_GAP_MIN,
         domain=DOMAIN_DEF,
         energy_gate=GATE_DEF,
         excluded_units=["eu_7"],

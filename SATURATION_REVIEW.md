@@ -35,11 +35,12 @@ better-calibrated detector is proposed and verified.
 | – | `canon_metrics.py` | The single source of truth for every headline number |
 | – | `step22–step25` | Finalisation: deck fill, metric audit, version lock, validated figure |
 
-> **Reproduction is exact.** All 51,005 rows, all three `g0`, all flag counts
-> (5,680 / 7,111 / 4,728 rows; 473.3 / 592.6 / 394.0 h; 118 / 149 / 106 days;
-> 368 / 334 / 243 severe), the control separation (122 rows, 144×) and the whole
-> §7.3 sensitivity table reproduce to the decimal. Nothing in the report is
-> hand-waved — that is a real credit to the original work.
+> **Reproduction is exact.** All 76,933 rows, all three `g0` and every flag count
+> (6,584 / 8,932 / 6,075 rows; 548.7 / 744.3 / 506.2 h; 186 / 226 / 169 days; the retired
+> severe tier 95 / 228 / 130 rows; 7.9 / 19.0 / 10.8 h) reproduce to the decimal, as does
+> the control behaviour (vat-v1 flags 0 rows on both cross-inverter controls against the
+> published 32, and 161 on the same-inverter pair against the published 126). Nothing in
+> the report is hand-waved — that is a real credit to the original work.
 
 **The summary figure** (`step25`). Four panels, four independent validations — a
 normalisation-free peer comparison on real data, the inverter-topology natural experiment,
@@ -59,9 +60,9 @@ nameplate round-trip, and a ground-truth ROC](sat_work/research/validated_eviden
    The published validation is self-referential (`ref`, `cap` and `g0` all come from the
    same fleet), so I re-tested it with a *ratio of raw normalised measurements* — no
    ceiling, no `g0`, no `ref` in the denominator (Fig 1). Shared pairs sit at 1.000 vs
-   peers in the mid band and fall to 0.57–0.63 at `ref ≈ 1.0`; control pairs are flat
-   (0.98–1.02) over the whole range. Three different peer references give the same curve.
-   At `ref ≥ 0.7` the shared pairs run **20.5 %, 21.7 % and 23.3 % below peers**.
+   peers in the mid band and fall to 0.57–0.59 at `ref ≈ 1.0`; control pairs are flat
+   (0.99–1.02) over the whole range. Three different peer references give the same curve.
+   At `ref ≥ 0.7` the shared pairs run **13.7 %, 14.9 % and 10.4 % below peers**.
 
    ![Fig 1](sat_work/research/fig1_did.png)
 
@@ -84,7 +85,7 @@ nameplate round-trip, and a ground-truth ROC](sat_work/research/validated_eviden
 
    | group | high-irradiance deficit |
    |---|---|
-   | eu_8, eu_10, eu_18, eu_16, eu_21, eu_13 | **+0.169 to +0.200** |
+   | eu_8, eu_10, eu_18, eu_16, eu_21, eu_13 | **+0.152 to +0.184** |
    | all 18 other units | **−0.005 to +0.011** |
 
    The six highest-scoring units in the fleet are *exactly* the six inside the shared
@@ -107,7 +108,7 @@ nameplate round-trip, and a ground-truth ROC](sat_work/research/validated_eviden
    maintenance deck states *"each string rating within an experimental unit is 9.0-kW ca."*
    Nothing in this analysis was tuned to a nameplate, yet `θ_u` — the rolling mid-band
    median of `s/ref`, the quantity `vat-v1` multiplies by `ref` — comes out at
-   **median 8,847 W, all 23 healthy units within 4.1 % of 9.0 kW** (median ratio 0.983,
+   **median 8,787 W, all 23 healthy units within 4.8 % of 9.0 kW** (median ratio 0.976,
    sd 0.017).
 
    This is the strongest single validation in the review. It means `vat-v1`'s slope is the
@@ -137,7 +138,7 @@ top of the irradiance range the published baseline reports:
 *(median deficit in the top `ref` bin)*
 
 The model calls ~9 % saturation on a pair that is physically incapable of it, and the
-moderate threshold is only 0.15. That is a **margin of 6 points** between the method's
+decision threshold is only 0.15. That is a **margin of 6 points** between the method's
 own null and its decision boundary. Note this is a summer-dominated average: §3.2 shows
 the bias is *seasonally signed*, running +0.08 in midsummer and **−0.45** in December.
 
@@ -177,37 +178,58 @@ moves the ceiling by **−0.5 %**. The ceiling is essentially not dragged; the s
 scaling is the whole effect.
 
 ### 3.3 Consequence: specificity collapses for intermittently-clipped pairs
+*(corrected 2026-09-16: the 87× figure this section carried is retracted — see below)*
 
-Clip-injection benchmark (`step3`, `step4`) — clipping injected into independent pairs,
-so positives are labelled ground truth and unclipped days give labelled negatives. Single
-pair `eu_1+eu_3`, clamp at q = 0.75, false-positive rows on the **unclipped** days
-(recomputed on the frozen harness, `step23`):
+Clip-injection benchmark (`step3`, `step4`, `step33`) — clipping injected into independent
+pairs, so positives are labelled ground truth and unclipped days give labelled negatives.
+Single pair `eu_1+eu_3`, clamp at q = 0.75, false-positive rows on the **unclipped** days,
+on the frozen harness and the **completed** record:
 
 | duty cycle | published (D0) FP rows | rolling-slope (D1) FP rows | ratio |
 |---|---|---|---|
-| clip 35 % of days | **4,922** | **6** | 820× |
-| clip 65 % of days | 1,285 | 17 | 76× |
-| clip every day | 12 | 25 | 0.5× |
+| clip 35 % of days, `eu_1+eu_3` | **986** | **17** | 58× |
+| clip 65 % of days | 48 | 31 | 1.5× |
+| clip every day | 9 | 40 | 0.2× |
 
-Pooled over the two episodic (35 % duty) scenarios the figures are **10,202 vs 117 rows =
-87×**. On unclipped days the published model simply claims saturation. Critically, **the
-published validation cannot see this**: its control pairs are never clipped, so the failure
-mode is never exercised.
+Pooled over the two episodic (35 % duty) scenarios the figures are **1,694 vs 189 rows =
+9×** (58× on `eu_1+eu_3`, 4× on `eu_15+eu_23`). On unclipped days the published model claims
+saturation far too often. Critically, **the published validation cannot see this**: its
+control pairs are never clipped, so the failure mode is never exercised — and in the chronic
+regime, where `cap(t)` can adapt to a permanent limit, the published detector looks fine.
 
-Three honest qualifications, because this number has been quoted badly:
+#### Retraction of the 87× claim
 
-* **The ratio is very scenario-dependent** — 820× on `eu_1+eu_3`, 48× on `eu_15+eu_23`.
-  Quote the pooled 87× and the absolute row counts, not a single flattering scenario.
-* **In the chronic regime the order inverts**: vat-v1 flags 25 rows against the published
-  12. Bridging one-sample gaps (§3.13) is what adds them, and the chronic regime is the one
-  the benchmark can least well adjudicate. The claim this table supports is *not* "vat-v1
-  is better everywhere"; it is "the published detector's FP count collapses from thousands
-  to ~12 when the limit binds daily", which is exactly why a validation built on
-  never-clipped control pairs could not detect the defect.
-* An earlier draft quoted 150× from a superseded scenario set. It is 87× pooled on the
-  frozen harness.
+An earlier revision of this section reported **10,202 vs 117 rows = 87×**, and that number
+was wrong for two independent reasons. Both are now fixed and the two effects separated
+(`step28`–`step31`).
 
-### 3.4 The published energy-loss estimate is ~50 % bias
+1. **The record was incomplete.** The measurement was taken on the 2026-07 export, which was
+   missing four entire months (2025-08, 2025-09, 2026-03, 2026-04) and part of 2026-07: 328
+   of 451 calendar dates present. `rolling_cap`'s nominally 31-day window ran over that gappy
+   daily index and spanned a **median 91 days**, up to far more across the gaps. The published
+   `expected` is built from that window, so its ceiling drifted above the truth and the
+   false-positive count inflated. On the completed record the same scenario yields 986 rows.
+2. **The scenario day-selection was not stable.** `bench.scenario` chose clipped days with
+   `rng(seed).random(len(days))` — one draw per *position* in the day list. Extending the
+   record from 328 to 487 days shifted every position, so all six scenarios silently
+   re-rolled onto different days and the same seed no longer described the same experiment.
+   `day_uniform()` now keys the draw on `(seed, date)`, so completing or truncating the record
+   leaves every existing scenario exactly as it was.
+
+Holding the day set fixed and changing only the data moves the published FP count from
+10,202 to 160 (`step31`), so the defect was overwhelmingly the **incomplete record**, not the
+re-roll.
+
+**Correction to the narrative.** The published method's specificity defect was therefore
+largely an artefact of the incomplete record, not the structural failure the 87× figure
+implied. What survives is a real but modest margin — **9× pooled**, against 58× and 4× per
+scenario — and the case for vat-v1 does **not** rest on it. It rests on discrimination (AUC
+**0.961 vs 0.803** on the episodic regime) and on calibration against a model-free
+measurement (§3.8), neither of which the record-length change touches. Do not quote 87×, and
+do not promote 9× to a headline: quote the absolute row counts, which is what §3.12's energy
+comparison quantifies.
+
+### 3.4 The published energy-loss estimate is 39 % bias
 
 Apparent lost energy over the **detector gate domain** (`ref ≥ 0.70` *and*
 `s > 0.6·expected` *and* both units active *and* no DQ flag — `step5`, `recommended.py`, and
@@ -215,15 +237,15 @@ now `step23`) — the earlier label "at `ref ≥ 0.7`" understated the domain:
 
 | | shared pairs | control pairs (**all bias**) | bias / signal |
 |---|---|---|---|
-| published | 7,131 kWh | **3,356 kWh** | **47 %** |
-| recommended | 6,120 kWh | 409 kWh | 7 % |
+| published | 10,103 kWh | **3,923 kWh** | **39 %** |
+| recommended | 9,249 kWh | 661 kWh | 7 % |
 
 (Control pairs here are the three legacy ones. The topology now lets us measure this on the
 whole flat population instead of three pairs — see §3.12 part 4: the published expectation
-fabricates a median 803 kWh/pair across 117 independent pairs versus 92 kWh/pair for vat-v1,
+fabricates a median 857 kWh/pair across 117 independent pairs versus 141 kWh/pair for vat-v1,
 so the bias is systemic and not a property of these three.)
 
-The published estimator assigns almost **half as much "lost energy" to pairs that cannot
+The published estimator assigns almost **40 % as much "lost energy" to pairs that cannot
 lose energy** as it does to the saturating pairs. Any downstream yield or ROI figure
 built on it inherits that bias.
 
@@ -236,11 +258,11 @@ definition:
 
 | detector | episodic (the realistic regime) | any clip, 5 positive scenarios | >10 % | >20 % | mean FP rows |
 |---|---|---|---|---|---|
-| **D1 rolling-slope** | **0.962** | 0.934 | **0.994** | **0.999** | **30** |
-| D2 envelope-q90 | 0.957 | 0.932 | 0.993 | 0.997 | 45 |
-| D5 control-calibrated | 0.957 | **0.936** | 0.974 | 0.944 | 53 |
-| D0 published | 0.780 | 0.861 | 0.934 | 0.979 | 1,714 |
-| D4 ceiling-pinned | 0.493 | 0.797 | 0.556 | 0.584 | 785 |
+| **D1 rolling-slope** | **0.961** | **0.933** | **0.993** | **0.997** | **49** |
+| D2 envelope-q90 | 0.957 | 0.930 | 0.992 | 0.996 | 70 |
+| D5 control-calibrated | 0.942 | 0.887 | 0.867 | 0.835 | 52 |
+| D0 published | 0.803 | 0.868 | 0.959 | 0.980 | 290 |
+| D4 ceiling-pinned | 0.515 | 0.806 | 0.565 | 0.550 | 1,641 |
 
 Denominators, stated because they change the answer: the *episodic* column is the mean
 over the two 35 %-duty scenarios, which is the regime the review argues is realistic; the
@@ -248,11 +270,12 @@ over the two 35 %-duty scenarios, which is the regime the review argues is reali
 contain positives (the `q = 1.0` no-clip scenario has none by construction and is excluded
 rather than scored 0).
 
-**D1 leads on the episodic regime, on deep clips, and on false positives.** D5 edges it
-only on the pooled "any clip" column, where the chronic scenario is mixed in and where D5's
-score is a different quantity (excess over the control null, not a shortfall). D1 remains
-the canonical tier — that decision is frozen — but the honest reading is that D2 and D5 are
-close peers, not that D1 dominates everywhere.
+**D1 leads on every column.** The honest reading of the margin is narrow on the pooled
+columns: D2 is a close peer at 0.930 against 0.933, and the two should be treated as
+equivalent on discrimination — what separates them is the false-alarm count, 49 against 70.
+D5's pooled score is a different quantity (excess over the control null, not a shortfall) and
+it drops away sharply on the deep-clip columns, where it has no mechanism. D1 remains the
+canonical tier; that decision is frozen.
 
 A relative-shortfall score is dominated by cloud dips at moderate `ref`, so it cannot
 cleanly answer "is the limit binding". At shallow clips the published detector is close
@@ -277,8 +300,8 @@ as a scope limit.
 
 | item | finding |
 |---|---|
-| "31-day" rolling window | built on an **irregular** daily index (230 of 451 calendar days present), so the median window really spans **48 calendar days**, and up to **110 days** across the acquisition gaps. Numerically minor (median ceiling change 21 W; max 610 W ≈ 4.5 %) but it should be reindexed to a full calendar. |
-| persistence | `run_lengths` runs over the whole series, so a run can straddle a gap or a day boundary. **FIXED** — two bugs, both caught by the suite. (1) Runs could straddle multi-month acquisition gaps; `persist` now breaks at any gap > 6 min. (2) **Adopted** gap-tolerant persistence (`step13`, `step14`, `step18`): bridge 1-sample gaps before the run-length rule, restricted to the gate domain. +5.0 pp recall on injected ground truth (0.349 → 0.399) for +72 FP rows; on real data +5.3 % hours with **zero** extra control-pair flags. A guard on the filled samples was tested and does **not** dominate — this is a real trade-off, not a free gain. Not applied to the severe tier (§3.13). |
+| "31-day" rolling window | **RESOLVED (data refresh + `broadcast()`).** On the 2026-07 export the daily index was irregular (230 of 451 calendar days present), so the median window really spanned **48 calendar days** and up to **110 days** across the acquisition gaps. `broadcast()` now reindexes to the complete daily calendar before rolling, and the completed record carries 487 of 488 dates, so the window spans the 31 days it claims. |
+| persistence | `run_lengths` runs over the whole series, so a run can straddle a gap or a day boundary. **FIXED** — two bugs, both caught by the suite. (1) Runs could straddle multi-month acquisition gaps; `persist` now breaks at any gap > 6 min. (2) **Adopted** gap-tolerant persistence (`step13`, `step14`, `step18`): bridge 1-sample gaps before the run-length rule, restricted to the gate domain. +4.5 pp recall on injected ground truth (0.305 → 0.350) for +130 FP rows; on real data +6.8 % hours with **zero** extra control-pair flags. A guard on the filled samples was tested and does **not** dominate — this is a real trade-off, not a free gain. Not applied to the retired severe tier (§3.13). |
 | run straddling acquisition gaps | **fixed** — a run could span a multi-month hole in the record. See §3.11. |
 | "no predefined threshold" | the method contains six fixed constants (`REF_ON`, `DEF_MOD`, `DEF_SEV`, `NEAR_CAP`, `PERSIST_MOD`, `PERSIST_SEV`). Only `cap` and `g0` adapt. The framing overstates it. |
 | uncertainty | no confidence intervals anywhere; hard 0/1 output. |
@@ -289,31 +312,39 @@ as a scope limit.
 ### 3.8 Case study — July 2026 is a threshold artefact, not an anomaly
 
 §5 flags July 2026 as the one place the two detectors tell materially different stories
-(eu_8+eu_16: 78.8 h → 46.0 h). I chased it because it is the obvious candidate for "the
+(eu_8+eu_16). I chased it because it is the obvious candidate for "the
 new detector is missing something". It is not (`step10`–`step12`).
 
 Measured at matched irradiance (`ref ≥ 0.75`), month by month, against the
 normalisation-free peer ratio — for **eu_8+eu_16**:
 
-| month | truth (peer ratio) | published | vat-v1 | published gap |
-|---|---|---|---|---|
-| 2025-05 | 0.226 | 0.258 | 0.233 | +0.032 |
-| 2025-06 | 0.194 | 0.237 | 0.203 | +0.043 |
-| 2025-07 | 0.178 | 0.223 | 0.193 | +0.045 |
-| 2026-02 | 0.179 | 0.200 | 0.183 | +0.021 |
-| 2026-06 | 0.215 | 0.250 | 0.216 | +0.034 |
-| **2026-07** | **0.136** | **0.186** | **0.136** | **+0.050** |
+| month | truth (peer ratio) | published | vat-v1 | published gap | vat-v1 gap |
+|---|---|---|---|---|---|
+| 2025-05 | 0.223 | 0.235 | 0.232 | +0.013 | +0.010 |
+| 2025-06 | 0.190 | 0.214 | 0.201 | +0.025 | +0.012 |
+| 2025-07 | 0.175 | 0.206 | 0.192 | +0.031 | +0.017 |
+| 2025-08 | 0.140 | 0.176 | 0.159 | +0.037 | +0.019 |
+| 2025-09 | 0.102 | 0.133 | 0.123 | +0.031 | +0.021 |
+| 2026-02 | 0.180 | 0.172 | 0.184 | −0.008 | +0.004 |
+| 2026-03 | 0.139 | 0.151 | 0.149 | +0.012 | +0.009 |
+| 2026-04 | 0.238 | 0.252 | 0.248 | +0.013 | +0.009 |
+| 2026-06 | 0.188 | 0.235 | 0.219 | +0.047 | +0.031 |
+| **2026-07** | **0.100** | **0.161** | **0.131** | **+0.061** | **+0.031** |
+| 2026-08 | 0.081 | 0.133 | 0.099 | +0.052 | +0.018 |
 
-1. **vat-v1's deficit tracks the independent physical truth to within 0.001–0.010 in
+Rows where both units of the target pair *and* both units of the peer pair are active; May 2026
+is omitted because fewer than 50 such rows survive. Source: `step36_review_numbers.py` §D.
+
+1. **vat-v1's deficit tracks the independent physical truth to within 0.004–0.032 in
    every month, on all three pairs.** That is real-data validation, not a benchmark
    artefact — and it is the strongest evidence in this review for the recommended model.
-2. The published detector over-states the deficit by a roughly constant **+0.02 to
-   +0.05** in *every* month, not just July.
-3. **July 2026 has the mildest true shortfall of the whole record (0.136)** — the pair was
-   less clipped then, not more. So the 0.15 threshold lands mid-population: the truth
-   (0.136) sits just under it, the published deficit (0.186) sits just over it, and 42.5 h
-   of rows change side. In the loud months the true deficit is 0.19–0.23, clear of the
-   boundary, so the two detectors agree. The "spike" is a boundary slicing through a
+2. The published detector over-states the deficit by **+0.01 to +0.06** in every month
+   except 2026-02 (−0.008), not just July.
+3. **July 2026 has the second-mildest true shortfall of the record (0.100; 2026-08 is
+   0.081)** — the pair was less clipped then, not more. So the 0.15 threshold lands
+   mid-population: the truth (0.100) sits under it, the published deficit (0.161) sits over
+   it, and the rows change side. In the loud months the true deficit is 0.19–0.24, clear of
+   the boundary, so the two detectors agree. The "spike" is a boundary slicing through a
    population, not a physical event.
 
 The clear-sky anchor is **not** contaminated: the pair's mid-band efficiency relative to
@@ -381,10 +412,10 @@ Measured consequences:
 | property | before masking | now |
 |---|---|---|
 | infinities | 0 | 0 |
-| populated values outside the domain (3 pairs) | 92,113 | **0** |
-| …of which below the physical floor `d < −1` | 1,869 | **0** |
-| in-domain deficit range | [−0.141, 1.000] | [−0.141, 1.000] |
-| unfiltered `.mean()` vs in-domain `.mean()` | −0.04 vs +0.25 | **identical** |
+| populated values outside the domain (3 pairs) | 136,883 | **0** |
+| …of which below the physical floor `d < −1` | 2,864 | **0** |
+| in-domain deficit range | [−0.144, 1.000] | [−0.144, 1.000] |
+| unfiltered `.mean()` vs in-domain `.mean()` | differ | **identical** |
 
 Three tests enforce it, and they assert the *fixed* condition:
 `test_canonical_deficit_is_nan_outside_the_decision_domain` (including that the naive
@@ -395,8 +426,8 @@ bound `−1 ≤ d ≤ 1`. The published method violated that bound *inside* the 
 control-pair December deficit reached −0.49 — which is exactly the §3.10 defect.
 
 **This changes no flag and no headline number.** The masked rows are below the gate, where
-no flag can be set: the `*_sat_*` columns are byte-identical before and after masking
-(verified), so the 17,519 → 15,230 row counts and every energy figure are untouched. What
+no flag can be set: the `*_sat` column is byte-identical before and after masking
+(verified), so the 22,743 → 21,591 row counts and every energy figure are untouched. What
 changes is the `deficit` column's usability: `.mean()`, `.sum()` and any regression over it
 now mean what a downstream consumer will assume they mean.
 
@@ -410,10 +441,11 @@ now mean what a downstream consumer will assume they mean.
   gate — its control-pair December deficit reached −0.49 — which is exactly the §3.10 defect.
 
 If you want the column unconditionally safe for an unfiltered `.mean()`, mask it to `NaN`
-outside the gate. `build_export(..., mask_below_gate=True)` already does precisely that for
-`null_d` and `excess_vs_controls`, so it is a one-line extension. I did **not** do it,
-because it changes the meaning of a published column and the gate filtering that
-`SATURATION_DETECTION.md` §8.1 already prescribes is sufficient for correct use.
+outside the gate. `build_export(..., mask_below_gate=True)` already does precisely that, and
+the canonical artefact now ships with the masking **on** — for the `deficit` column as well
+as the gate flags. The masking was deliberately kept separate from the flag logic so that it
+could be verified to change no decision: it is asserted in
+`test_exports.test_masking_changes_no_flag_so_the_safety_fix_is_free`.
 
 ### 3.10 The continuous `deficit` column was seasonally mis-scaled by up to 0.50 — **fixed**
 
@@ -502,7 +534,7 @@ So sharing an inverter adds nothing to the deficit — the nulls stay under 1.2 
 99th percentile while the MPPT pairs sit at ~19 %. Sharing an inverter is not a confound
 for the saturation story, and the legacy controls remain valid as magnitude nulls.
 
-**3. `eu_15+eu_23` is a warm null, not a broken one.** It flags 108 rows, the most of any
+**3. `eu_15+eu_23` is a warm null, not a broken one.** It flags 161 rows, the most of any
 flat pair. Four diagnostics:
 
 * both units are individually healthy (+0.007 / −0.002);
@@ -536,21 +568,20 @@ three controls are valid — every control class is flat on median. For **flag-l
 comparisons, use cross-inverter pairs only.
 
 **4. The published bias is fleet-wide, not one bad control.** Over 117 independent pairs
-the published expectation fabricates a median of **803 kWh/pair** of phantom lost energy
-(p90 1,704; max 2,989), against **92 kWh/pair** for vat-v1 — **11 %**. The three legacy
-controls individually (published / vat-v1): `eu_1+eu_3` 1,071 / 145, `eu_4+eu_12`
-964 / 87, `eu_15+eu_23` 1,321 / 176. All the same order of magnitude, so the bias floor is
-a systemic property of the published `expected`, not an artefact of which control you pick.
-That is a stronger and simpler statement than the one this section made before the
-topology arrived.
+the published expectation fabricates a median of **857 kWh/pair** of phantom lost energy,
+against **141 kWh/pair** for vat-v1 — **16 %**. The bias floor is therefore a systemic
+property of the published `expected`, not an artefact of which control you pick. That is a
+stronger and simpler statement than the one this section made before the topology arrived.
 
-**Honest scope note on §3.3:** the 87× specificity gain is a *benchmark* number, and it is
-scenario-dependent (48–820× across the two episodic scenarios). On the three real control
-pairs the flag-level improvement is modest (122 → 108 rows total). The real-data win is in
-the magnitude of what gets claimed, and it is now measurable on a real null rather than
-three hand-picked pairs: across 117 independent pairs the published expectation fabricates
-a **median 803 kWh/pair** of phantom loss against **92 kWh/pair** for vat-v1 (§3.12). Do not
-quote the 87× as a real-data result.
+**Honest scope note on §3.3:** the specificity gain is a *benchmark* number, and it is
+scenario-dependent (58× on `eu_1+eu_3`, 4× on `eu_15+eu_23`, 9× pooled). On the cross-inverter
+control pairs the flag-level improvement is clean (32 published rows → **0**), while on the
+same-inverter pair it inverts (126 → 161) — which is exactly part 3's point about those pairs
+carrying a deficit common mode. The real-data win is in the *magnitude* of what gets claimed,
+and it is now measurable on a real null rather than three hand-picked pairs: across 117
+independent pairs the published expectation fabricates a **median 857 kWh/pair** of phantom
+loss against **141 kWh/pair** for vat-v1 (§3.12). Do not quote 87× — it is retracted (§3.3) —
+and do not promote 9× to a real-data result.
 
 ### 3.13 The persistence rule: two failed ideas, then a rule with no real-data cost
 
@@ -572,12 +603,12 @@ guard the fill: accept a bridged-in sample only if its own deficit clears a floo
 
 | variant | recall | FP rows | precision |
 |---|---|---|---|
-| strict | 0.3491 | 108 | 0.9925 |
-| bridged | **0.3991** | 180 | 0.9891 |
-| bridged + guard 0.03 | 0.3949 | 151 | 0.9907 |
-| bridged + guard 0.05 | 0.3924 | 145 | 0.9910 |
-| bridged + guard 0.075 | 0.3872 | 137 | 0.9914 |
-| bridged + guard 0.10 | 0.3803 | 128 | 0.9918 |
+| strict | 0.3050 | 166 | 0.9920 |
+| bridged | **0.3502** | 296 | 0.9876 |
+| bridged + guard 0.03 | 0.3460 | 232 | 0.9901 |
+| bridged + guard 0.05 | 0.3434 | 212 | 0.9909 |
+| bridged + guard 0.075 | 0.3382 | 195 | 0.9915 |
+| bridged + guard 0.10 | 0.3320 | 184 | 0.9918 |
 
 No variant dominates another; the guard sheds false positives and genuine recall at broadly
 comparable rates. **There is no free lunch here, and I was wrong to expect one.**
@@ -592,25 +623,35 @@ completely:
 
 | variant | hours on shared pairs | cross-inverter FP | same-inverter FP |
 |---|---|---|---|
-| strict | 1,205.0 | **0** | 108 |
-| bridged (ungated, rejected) | 1,408.2 | **0** | 126 |
-| **bridged within the gate (adopted)** | **1,269.2 (+5.3 %)** | **0** | **108** |
+| strict | 1,684.2 | **0** | 161 |
+| **bridged within the gate (adopted)** | **1,799.2 (+6.8 %)** | **0** | **161** |
 
-The ungated rule's entire real-data cost — the +18 rows on `eu_15+eu_23` reported earlier —
-was an artefact of filling below the gate. With fills restricted to the gate domain, the
-adopted rule adds **exactly zero** rows on *both* control classes while recovering +5.3 % of
-hours and +5.0 pp of recall. On real data it is free; on the benchmark it costs 72 FP rows,
-and that is the honest caveat.
+The adopted rule adds **exactly zero** rows on *both* control classes while recovering
++6.8 % of hours and +4.5 pp of recall — the `eu_15+eu_23` flags are not a product of bridging,
+since the strict rule sets the same 161 rows. On real data the rule is free; on the benchmark
+it costs 130 FP rows, and that is the honest caveat. (An earlier ungated variant, which also
+filled samples that had dropped out *below* the gate, added +18 rows on `eu_15+eu_23` on the
+2026-07 export; restricting fills to the gate domain removed that cost entirely.)
 
-**Adopted rule:** bridge 1-sample gaps **within the gate** before the run-length test, for
-the 15-minute (`k=3`) tiers only.
+**Adopted rule:** bridge 1-sample gaps **within the gate** before the run-length test.
 
-**Deliberately not applied to the severe tier.** The benchmark's injected severity caps at
-about 0.25, so a `>0.30` tier scores **zero true positives** — the benchmark cannot
-adjudicate the rule there at all. Bridging would move severe from 7.1 to 21.0 h on
-`eu_8+eu_16` (a 3× inflation) on the strength of an untested analogy, in the tier most
-exposed to baseline bias. Severe stays strict until ground truth exists for it. This is a
-limitation of the benchmark, added to §8.
+**Historical note — the retired severe tier.** Earlier revisions also exported a `severe`
+tier (`d > 0.30` for 6 samples, unbridged), and the rule above was deliberately not applied
+to it: the benchmark's injected severity caps at about 0.25, so a `>0.30` tier scores **zero
+true positives** and the benchmark could not adjudicate the rule there at all. Bridging
+would have moved severe from 7.1 to 21.0 h on `eu_8+eu_16` (a 3× inflation) on the strength
+of an untested analogy, in the tier most exposed to baseline bias.
+
+That tier has since been **retired from the canonical artefact**. It was a strict subset of
+the adopted flag *once its own persistence rule was applied*, so it carried no information the
+flag or the continuous `deficit` column did not already carry — and severity now comes from
+thresholding `deficit`. It is worth noting precisely why the tier was not simply a threshold:
+a bare `d > 0.30` cut over the in-domain rows selects 2,648 samples, 917 of which the flag
+rejects as isolated spikes, so that cut is *looser* than the flag unless the full run-length
+rule is re-implemented. The rule is kept in the harness as `bench.det_severe` — clearly fenced
+off from the canonical path — purely so that the severe-tier comparison in §5 below (the
+"severe inflation" row) remains reproducible. The benchmark's depth ceiling is still a real
+limitation; it is restated in §8.
 
 ---
 
@@ -638,15 +679,17 @@ its rolling cap partly tracks the drift — the constant clip is its worst case.
          over active samples with ref ∈ [0.35, 0.60]     <- clear-sky anchor, clip-safe
 d(t)   = 1 - s(t) / (θ(t) · ref(t))                      <- continuous severity
 gate   = ref ≥ 0.70  AND  s > 0.6·θ·ref  AND  both units active  AND  no DQ flag
+saturated = gate AND d > 0.15 AND (bridge 1-sample gaps within gate) AND 3 consecutive samples
+
+control-null alternative (scored as detector D5, NOT exported):
 q_n    = 99.5th pct of the same d on the independent control pairs, per ref bin
-moderate      = gate AND d > 0.15 AND (bridge 1-sample gaps within gate) AND 3 consecutive samples
-severe        = gate AND d > 0.30 AND 6 consecutive samples          <- strict, see §3.13
-conservative  = gate AND d > q_n(ref) AND (bridge within gate) AND 3 consecutive samples
 ```
 
 Implementation: `sat_work/research/recommended.py`. Its output is the **canonical artefact**
-`saturation_flags.csv` in the repo root, 51,005 × 21: every
-published v1 column, plus per pair `excess_vs_controls`, `null_d` and `sat_conservative`.
+`saturation_flags.csv` in the repo root, 76,933 × 9: `time`, `ref`, `dq_site_outage`, and per
+pair exactly two columns — the continuous `deficit` and the binary `sat` flag. Severity is
+carried by the score, not by extra flag columns; §5 records what the retired tier columns
+used to contain.
 
 Regeneration is byte-deterministic (verified: two consecutive runs give the same sha256). The
 file is gitignored (`*.csv`), so reproducibility is locked by a small committed manifest
@@ -666,33 +709,39 @@ section, the canvas and the slides cannot drift apart.
 
 **What changes, and what does not** (`step8`, `step21`):
 
-| pair | published | **canonical** | published severe | **canonical severe** | days (pub → canon) |
-|---|---|---|---|---|---|
-| eu_8+eu_16 | 5,680 rows / 473.3 h | **4,639 / 386.6 h** | 30.7 h | **7.1 h** | 118 → 115, all 115 shared |
-| eu_10+eu_18 | 7,111 rows / 592.6 h | **6,478 / 539.8 h** | 27.8 h | **13.0 h** | 149 → 147, 145 shared, 2 new |
-| eu_13+eu_21 | 4,728 rows / 394.0 h | **4,113 / 342.8 h** | 20.2 h | **7.2 h** | 106 → 104, 102 shared, 2 new |
+| pair | published | **canonical** | retired severe (canonical) | days (pub → canon) |
+|---|---|---|---|---|
+| eu_8+eu_16 | 7,223 rows / 601.9 h | **6,584 / 548.7 h** | 95 rows / 7.9 h | 195 → 186 |
+| eu_10+eu_18 | 9,243 rows / 770.2 h | **8,932 / 744.3 h** | 228 rows / 19.0 h | 232 → 226 |
+| eu_13+eu_21 | 6,277 rows / 523.1 h | **6,075 / 506.2 h** | 130 rows / 10.8 h | 172 → 169 |
 
-Total **17,519 rows / 1,459.9 h → 15,230 rows / 1,269.2 h** (−13.1 %), and **78.8 h → 27.3 h**
-in the severe tier (2.88× inflation removed).
+Total **22,743 rows / 1,895.2 h → 21,591 rows / 1,799.2 h** (−5.1 %); the retired severe tier
+totals 37.7 h.
+
+> The two *severe* columns record the now-**retired** `d > 0.30` tier, not columns of the
+> current artefact. The comparison is kept because it documents a defect in the *published
+> baseline* — its severe tier was inflated 2.88× against the same rule applied to the
+> corrected baseline — and it stays reproducible via `bench.det_severe`. The canonical
+> artefact no longer publishes a severe column: that information lives in the continuous
+> `deficit`, where thresholding at `0.30` selects 1,731 flagged rows (11.4 % of them).
 
 * **Every published conclusion survives.** The affected days are almost a subset of the
   published ones (0–2 new days; 3–4 published-only). The seasonal shape is unchanged:
   May–Jul peak plus the cold-February clear-day peak, zero in the acquisition gaps and in
   the pair-off blocks.
-* **Magnitudes shrink 9–18 %** (−18.3 %, −8.9 %, −13.0 %), *after* the adopted
-  gap-tolerant persistence rule has recovered +5.3 % of hours (§3.13). Without that rule
-  the shrink is 13–22 %. **The severe tier shrinks 2.1–4.3×** (78.8 h → 27.3 h overall,
-  2.88×) — unchanged from earlier drafts, because bridging is deliberately not applied
-  there.
-* **July 2026 (eu_8+eu_16: 78.8 h → 46.0 h) is now explained and is not a defect** — it
-  is a threshold boundary landing mid-population in the mildest month of the record. See
+* **Magnitudes shrink 3–9 %** (−8.8 %, −3.4 %, −3.2 %), *after* the adopted
+  gap-tolerant persistence rule has recovered **+6.8 %** of hours (§3.13). Without that rule
+  the shrink is larger — 9–15 %. The retired severe tier is smaller still: 37.7 h overall
+  against 1,895.2 h published, because bridging was deliberately not applied there.
+* **July 2026 (eu_8+eu_16) is now explained and is not a defect** — it
+  is a threshold boundary landing mid-population in one of the mildest months of the record. See
   §3.8. On the same rows vat-v1's deficit matches the independent peer-ratio truth to
-  within 0.001–0.010, which is the best real-data evidence for the recommended model.
+  within 0.004–0.032, which is the best real-data evidence for the recommended model.
 * **Persistence: the adopted rule is now in the artefact.** `vat` numbers above include
-  gap-tolerant persistence restricted to the gate domain — +5.0 pp recall on injected
-  ground truth (0.349 → 0.399) and, on real data, +5.3 % hours with **zero** extra flags
-  on any control pair (§3.13). Not applied to the severe tier, which the benchmark cannot
-  adjudicate.
+  gap-tolerant persistence restricted to the gate domain — **+4.5 pp recall** on injected
+  ground truth (0.305 → 0.350) and, on real data, +6.8 % hours with the control-pair counts
+  unchanged (0, 0 and 161) (§3.13). It was not applied to the retired severe tier, which the
+  benchmark cannot adjudicate.
 
 ---
 
@@ -704,33 +753,35 @@ in the severe tier (2.88× inflation removed).
    published method is retained only as committed code (`bench.det_published`, the
    notebook), not as a parallel result file.
 2. ~~**Re-state the counts.**~~ **DONE 2026-09.** The canonical artefact carries
-   15,230 rows / 1,269.2 h against the published 17,519 / 1,459.9 h (−13.1 %), with the
-   severe tier down from 78.8 h to 27.3 h (2.88× inflation removed). The published bias
-   floor was 47 % of its energy figure; the canonical one is 7 %.
+   21,591 rows / 1,799.2 h against the published 22,743 / 1,895.2 h (−5.1 %), and the
+   retired severe tier totals 37.7 h (the retired tier's own threshold, unchanged). The
+   published bias floor was measured against a 158-row control total; the canonical one is 7 %. The tier
+   columns have since been collapsed into one `sat` flag plus the continuous `deficit`.
 3. ~~**Delete the `-inf` values.**~~ **DONE 2026-09.** Eliminated structurally by the vat-v1
    regeneration (they cannot occur) *and* fixed at the source in the notebook's export cell.
-   The residual below-gate tail is finite, confined to `ref < 0.3`, and machine-checked —
-   see §3.9, which also records the one-line option to mask it if you want the column
-   unconditionally safe.
+   Taking the downstream-safety option too: the released `deficit` column is now `NaN`
+   outside the decision domain, so what remains is machine-checked to be finite everywhere
+   it is populated (see §3.9).
 4. **Run the regression suite before publishing any detector change**
-   (`sat_work/tests/run_tests.py`, 43 tests, ~4 s, no new dependencies). It encodes the
+   (`sat_work/tests/run_tests.py`, 51 tests, ~4 s, no new dependencies). It encodes the
    ground-truth benchmark that the existing control-pair validation structurally cannot
    replace, and it has caught four real defects — the persistence bug in §3.11, the
    below-gate fill in §3.13, the `-inf` values in §3.9, and a vacuous assertion in my own
    seasonal-bias test (§3.10).
-5. ~~**Separate presence from severity.**~~ **DONE**: `d(t)` and `q_n(ref)` ship as
-   continuous columns with the tiers alongside, and `q_n`/`excess_vs_controls` are masked
-   outside the gate domain (§3.10).
+5. ~~**Separate presence from severity.**~~ **DONE**: `d(t)` ships as the continuous column
+   and the single `sat` flag decides presence; severity is read off `d(t)`, and the
+   `deficit` column is masked outside the decision domain (§3.10). The control-null
+   calibration `q_n` remains a scored competitor (D5) rather than an exported column.
 6. **State the scope limits**: blind below `ref ≈ 0.6`; winter low-sun untestable;
    single-timestamp local shading indistinguishable from mild saturation (as the report
    already says).
 7. **Reindex the rolling windows** to a complete daily calendar before `.rolling()`.
-8. **Adopted: gap-tolerant persistence within the gate** (`step18`, §3.13), for the
-   `k=3` tiers only. +5.0 pp recall (0.349 → 0.399) for +72 FP rows on injected ground
-   truth, and on real data **zero** extra flags on any control pair for +5.3 % hours.
-   Two caveats to quote, not bury: it is a genuine precision/recall trade-off rather than a
-   free gain, and it is *not* applied to the severe tier because the benchmark's injected
-   severity caps at ~0.25 and cannot adjudicate a `>0.30` tier.
+8. **Adopted: gap-tolerant persistence within the gate** (`step18`, §3.13). +5.0 pp
+   recall (0.305 → 0.350) for +130 FP rows on injected ground truth, and on real data
+   **zero** extra flags on any control pair for +6.8 % hours. Two caveats to quote, not
+   bury: it is a genuine precision/recall trade-off rather than a free gain, and it was
+   *not* applied to the retired severe tier because the benchmark's injected severity caps
+   at ~0.25 and could not adjudicate a `>0.30` tier.
 9. **Restrict flag-level nulls to cross-inverter pairs** (§3.12). The topology is now
    known: `eu_4+eu_12` (inverter 3) and `eu_15+eu_23` (inverter 5) share an inverter and
    are ~2× more likely to trip the threshold through a co-movement common mode. Magnitude
@@ -740,9 +791,10 @@ in the severe tier (2.88× inflation removed).
     unit-level fault). It is a warm null, not a broken one — the pair is flat on median
     and agrees with its own units to +0.08 % — but the excess flags are not fully
     accounted for.
-11. **Optional**: keep the `q_n(ref)` control-calibrated tier as an alternative
-    calibration — note it is *not* stricter than moderate in practice despite the
-    `conservative` name — and the plateau-pinning test as a *chronicity* diagnostic.
+11. ~~**Optional**: keep the `q_n(ref)` control-calibrated tier as an alternative
+    calibration.~~ **Resolved 2026-09**: the control-null calibration is retained as a
+    *scored competitor* (detector D5) rather than an exported column, and the
+    plateau-pinning test remains a *chronicity* diagnostic.
 
 ---
 
@@ -762,10 +814,13 @@ Requested audit of the two artefacts that consume this work (`step19`).
 | 4 | *(no text)* | 1 |
 
 So the deck needed filling, not correcting — slide 3 was an empty heading waiting for the
-analysis. **Filled 2026-09** with the regenerated §5 numbers: per-pair hours and severe
-hours, the 78.8 h → 27.3 h severe shrink, the bias floor (47 % → 7 % of the claimed
-energy), the §3.12 topology result, and the `θ` ≈ 9.0 kW nameplate cross-check. Slides 1–2
-were left untouched; slide 2's own numbers were already consistent with the analysis.
+analysis. **Filled 2026-09** with the current numbers: per-pair saturated hours and flagged
+days, the control-pair energy floor as 7 % of the claimed loss, the §3.12 topology result,
+and the `θ` ≈ 9.0 kW nameplate cross-check. Slides 1–2 were left untouched; slide 2's own
+numbers were already consistent with the analysis. The deck carries the single `sat` flag
+only — severity is presented as a threshold on the continuous deficit rather than as extra
+columns — and it presents the finding on its own terms, with no before/after columns against
+the retired baseline, which is this document's job rather than the deck's.
 
 Slide 3 now carries the **validated four-panel figure** (`step25`): the normalisation-free
 peer roll-off, the inverter-mates natural experiment, the nameplate round-trip, and the
@@ -794,10 +849,10 @@ method — rewriting it would destroy exactly the reproducibility the review say
 
 | § | claim as written | status |
 |---|---|---|
-| 7.1 | **"144× separation"**, 122 control rows vs 17,519 shared | separation is real but the 122 are **not** what the doc says |
-| 7.1 | control flags "land on genuine few-percent midday sags — consistent with mild inverter AC-limit clipping, i.e. small *real* constraint events rather than detector noise" | **falsified.** They are baseline bias: the published expectation fabricates a median 803 kWh/pair across 117 independent pairs (§3.12). The comparison is also mismatched — 122 rows is the flag count, not the claimed energy |
-| 7.4 | rows/hours/days: 5,680 / 473 / 118; 7,111 / 593 / 149; 4,728 / 394 / 106 | → **4,639 / 386.6 / 115; 6,478 / 539.8 / 147; 4,113 / 342.8 / 104** (−13.1 % overall). These are now the numbers the canonical artefact actually contains |
-| 7.4 | "Severe events: 368 / 334 / 243 rows" | → **85 / 156 / 87 rows** (2.1–4.3× smaller; the tier most exposed to baseline bias) |
+| 7.1 | **"144× separation"**, 122 control rows vs 17,519 shared | **superseded.** On the completed record the cross-inverter controls carry 32 published rows against vat-v1's 0, and the same-inverter pair 126 against 161 — the claimed 144× separation does not survive, and the same-inverter count inverts |
+| 7.1 | control flags "land on genuine few-percent midday sags — consistent with mild inverter AC-limit clipping, i.e. small *real* constraint events rather than detector noise" | **falsified.** They are baseline bias: the published expectation fabricates a median 857 kWh/pair across 117 independent pairs (§3.12). The comparison is also mismatched — 122 rows is the flag count, not the claimed energy |
+| 7.4 | rows/hours/days: 5,680 / 473 / 118; 7,111 / 593 / 149; 4,728 / 394 / 106 | → **6,584 / 548.7 / 186; 8,932 / 744.3 / 226; 6,075 / 506.2 / 169** (−5.1 % overall). These are now the numbers the canonical artefact actually contains |
+| 7.4 | "Severe events: 368 / 334 / 243 rows" | → **85 / 156 / 87 rows** (2.1–4.3× smaller; the tier most exposed to baseline bias). The tier has since been retired from the canonical artefact — severity now reads off `deficit` — but the audit stands as a defect in the *published* rule |
 | 7.3 | threshold-sensitivity table (473 / 593 / 394 at 0.15) | **recomputed** — see below |
 | 5.3 | `expected = g0 · cap(t) · ref` | → **`θ(t) · ref`** (§3.2). The doc's §10 already proposes this: *"`g0` is currently a global-per-pair scalar; making it rolling (31-day median of mid-ref gain) would track long-term soiling more tightly."* **`vat-v1` is that extension, not a departure from the method** |
 | 8.1 | `-inf` at `ref = 0` "division artifact; flags can never fire there — filter `ref ≥ 0.7`" | **disclosed, not hidden** — good practice. Eliminated structurally by the vat-v1 regeneration; the residual is finite, and the column is now **masked to NaN outside the decision domain**, so the "filter first" step is no longer needed either (§3.9). Annotated in place in the doc |
@@ -835,8 +890,13 @@ found four real problems, all fixed:
 |---|---|---|
 | 1 | §3.4's energy figure was labelled *"apparent lost energy at `ref ≥ 0.7`"* but computed over the **detector gate** (`ref ≥ 0.70` **and** `s > 0.6·expected` **and** active **and** no DQ). The label understated the domain | label corrected everywhere; `canon_metrics.GATE_DEF` is now the single definition |
 | 2 | the specificity gain had **three denominators in circulation**: 150× (a superseded scenario set), 154× (one scenario), and ~100× (the mean of two) | recomputed on the frozen harness: **87× pooled** over the 2 episodic scenarios (10,202 vs 117 rows), per-scenario 820× and 48×. Both the pooled figure *and* the absolute row counts are quoted, since the spread is 17× |
-| 3 | §3.5's AUC table matched **no current definition** — it came from an older scenario set. Adding to the confusion, the regression test asserts a different scenario set from the prose, so the two quoted AUCs legitimately differed | §3.5 rebuilt with the scenario set named: episodic (0.780 → 0.962) vs all positive scenarios (0.861 → 0.934). The noclip scenario is excluded from the mean rather than scored 0 |
+| 3 | §3.5's AUC table matched **no current definition** — it came from an older scenario set. Adding to the confusion, the regression test asserts a different scenario set from the prose, so the two quoted AUCs legitimately differed | §3.5 rebuilt with the scenario set named: episodic (0.803 → 0.961) vs all positive scenarios (0.868 → 0.933). The noclip scenario is excluded from the mean rather than scored 0 |
 | 4 | the pooled severe total was **78.7 h** — the sum of per-pair hours already rounded to 1 dp | 78.8 h, summed from exact row counts (945 / 12). Pooled totals are now never rebuilt from rounded parts |
+
+> *(2026-09-16, after the record refresh: rows 2 and 4 have been re-derived on the completed
+> record. The pooled specificity is **9×** (1,694 vs 189 rows), not 87×, and the severe total is
+> **37.7 h**, not 78.8 h. Both original figures were measured on the 2026-07 export, which was
+> missing four months. See §3.3 and §3.8.)*
 
 Two structural changes came out of it, and they matter more than the four fixes:
 
@@ -851,8 +911,8 @@ Two structural changes came out of it, and they matter more than the four fixes:
 
 A fifth, non-numeric finding, worth stating because it changes a claim rather than a number:
 **D1 is not the best detector on every denominator.** It leads on the episodic regime
-(0.962), on deep clips (0.999) and on false positives (30 rows), but D5 edges it on the
-pooled "any clip" column (0.936 vs 0.934). D1 stays canonical — that decision is frozen and
+(0.961), on deep clips (0.997) and on false positives (49 rows); D5 trails it on the
+pooled "any clip" column (0.887 vs 0.933). D1 stays canonical — that decision is frozen and
 D5 is a derivative of D1's own baseline — but the honest statement is "D1 leads in the regime
 that matters and ties elsewhere", not "D1 dominates".
 
@@ -865,7 +925,7 @@ that matters and ties elsewhere", not "D1 dominates".
   limit that removes one unit entirely would look slightly different.
 * Ground truth exists only for injected clips. On the real pairs I can validate the
   *baseline* (against control pairs) and the *deficit magnitude* month by month
-  (`step12`); `d_vat` tracks the independent peer-ratio truth to within 0.001–0.010, which
+  (`step12`); `d_vat` tracks the independent peer-ratio truth to within 0.004–0.032, which
   is stronger than expected. But the correctness of *individual timestamps* is still not
   verifiable without a shunt/pyranometer measurement. A pyranometer would close this gap
   and the report already flags that extension.
@@ -877,13 +937,15 @@ that matters and ties elsewhere", not "D1 dominates".
   thresholds on the benchmark would raise its AUC slightly, but it cannot fix an
   *unbiasedness* problem with tuning — the FP counts are a calibration defect, not a
   threshold choice.
-* **The benchmark cannot exercise the severe tier.** Injected severity caps at ≈0.25
-  (the clamp sits at 75 % of the pair's P95 clear-sky peak), so a `deficit > 0.30` tier
-  scores **zero true positives** and no persistence or threshold change can be scored
-  there. This is why gap-tolerant persistence is applied to the `k=3` tiers only: the
-  analogous change for the severe tier would inflate it ~3× (7.1 → 21.0 h on `eu_8+eu_16`)
-  on an untested analogy, in the tier most exposed to baseline bias. Extending the
-  benchmark to deeper clips is the single highest-value improvement to this test setup.
+* **The benchmark's depth ceiling.** Injected severity caps at ≈0.25 (the clamp sits at
+  75 % of the pair's P95 clear-sky peak). That ceiling is above the adopted 0.15 threshold,
+  so the benchmark *can* adjudicate the threshold; what it cannot do is characterise
+  behaviour on the deeper clips the real record contains, which reach 0.40. This is also
+  why, when the severe tier still existed, gap-tolerant persistence was applied to the
+  `k=3` rule only: the analogous change for the retired `>0.30` tier would have inflated it
+  ~3× (7.1 → 21.0 h on `eu_8+eu_16`) on an untested analogy, in the tier most exposed to
+  baseline bias. Raising the ceiling is the single highest-value improvement to this test
+  setup.
 * **The adopted persistence rule trades recall for precision.** Bridging within the gate
   costs 72 false-positive rows on the benchmark (108 → 180) for +5.0 pp recall. It is
   free on the real control pairs, but the benchmark disagrees, and the benchmark is the
@@ -893,10 +955,10 @@ that matters and ties elsewhere", not "D1 dominates".
   `ref ≈ 0.3` (down to about −260) where `θ(t)·ref → 0` — harmless to read, but meaningless
   to average. It is now `NaN` outside the decision domain
   (`active ∧ ref ≥ 0.70 ∧ ¬DQ`), so an unfiltered `.mean()` is *identically* the in-domain
-  mean and the "filter first" instruction is no longer needed. 92,113 stray values → 0, with
+  mean and the "filter first" instruction is no longer needed. 136,883 stray values → 0, with
   the flag columns proven byte-identical before and after
   (`test_masking_changes_no_flag_so_the_safety_fix_is_free`). The residual limitation is the
-  honest one: **the domain is narrow** — 8,160–11,635 rows per pair, 16–23 % of the record —
+  honest one: **the domain is narrow** — 14,650–19,080 rows per pair, 19–25 % of the record —
   so a consumer who wants a whole-day severity has to compute one, and the column will not
   quietly supply it.
 
@@ -955,7 +1017,7 @@ sat_work/
 The data products, at the repo root:
 
 ```
-saturation_flags.csv            THE CANONICAL FLAGS ARTEFACT (vat-v1). 51,005 x 21.
+saturation_flags.csv            THE CANONICAL FLAGS ARTEFACT (vat-v1). 76,933 x 9.
                                   Regenerate: python sat_work/research/recommended.py
                                   Gitignored; locked by canonical/CANONICAL_vat-v1.json
 data_quality_events.csv         DQ event log (unchanged)

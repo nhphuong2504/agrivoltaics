@@ -1,0 +1,40 @@
+﻿================================================================================================================
+GAP-TOLERANT PERSISTENCE ON INJECTED GROUND TRUTH   (D1 rolling-slope, q=0.75 clip)
+================================================================================================================
+The question is not 'how much does it recover' but 'what does it recover'.
+
+  duty=0.35 eu_1+eu_3: done
+  duty=0.35 eu_4+eu_12: done
+  duty=0.35 eu_15+eu_23: done
+  duty=0.65 eu_1+eu_3: done
+  duty=0.65 eu_4+eu_12: done
+  duty=0.65 eu_15+eu_23: done
+  duty=1.00 eu_1+eu_3: done
+  duty=1.00 eu_4+eu_12: done
+  duty=1.00 eu_15+eu_23: done
+
+ duty        pair  tp0  fp0  tp1  fp1  rec_rows  rec_true_clip  rec_med_sev
+ 0.35   eu_1+eu_3 2104    0 2424   15       366            320        0.157
+ 0.35  eu_4+eu_12 1896    0 2223    7       363            327        0.156
+ 0.35 eu_15+eu_23 1630  181 1974  200       397            344        0.154
+ 0.65   eu_1+eu_3 3593    2 4225   34       743            632        0.158
+ 0.65  eu_4+eu_12 3258    0 3910   20       745            652        0.158
+ 0.65 eu_15+eu_23 2839  181 3487  212       749            648        0.155
+ 1.00   eu_1+eu_3 5686    3 6661   45      1132            975        0.157
+ 1.00  eu_4+eu_12 5208    0 6213   28      1136           1005        0.156
+ 1.00 eu_15+eu_23 4635  124 5610  162      1110            975        0.155
+
+totals:
+   strict  (g=0): TP 30849   FP   491   precision 0.984
+   bridged (g=1): TP 36727   FP   723   precision 0.981
+
+   the 6741 recovered rows: 5878 are genuine clip rows (87%)
+   median true clip severity of the recovered rows: 0.156
+
+   margin above the 0.15 threshold, genuine vs spurious recovered rows:
+     genuine clip rows  (n=5878): median deficit 0.163
+     spurious rows      (n=863): median deficit 0.014
+     share of recovered rows with deficit < 0.17: 61%
+
+   If both sit just above 0.15 the rule is a threshold shift, not a better
+   persistence test.

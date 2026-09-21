@@ -25,7 +25,7 @@ print("=" * 78)
 for a, b in PAIRS:
     k = f"{a}_{b}"
     pub = detect(df, FE, a, b)["moderate"]
-    vat = f2[f"{k}_sat_moderate"].astype(bool)
+    vat = f2[f"{k}_sat"].astype(bool)
     m = pd.DataFrame({"published": pub.groupby(dayidx).sum() / 12,
                       "vat": vat.groupby(dayidx).sum() / 12}).resample("1MS").sum().round(1)
     m.index = m.index.strftime("%Y-%m")
@@ -45,7 +45,7 @@ print("=" * 78)
 for a, b in PAIRS:
     k = f"{a}_{b}"
     pub = detect(df, FE, a, b)["moderate"]
-    vat = f2[f"{k}_sat_moderate"].astype(bool)
+    vat = f2[f"{k}_sat"].astype(bool)
     pv = pub[pub].index.month.value_counts(normalize=True).sort_index() * 100
     vv = vat[vat].index.month.value_counts(normalize=True).sort_index() * 100
     t = pd.DataFrame({"published": pv, "vat": vv}).round(1)

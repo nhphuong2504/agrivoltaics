@@ -2,7 +2,7 @@
 STEP 24 - write and verify the canonical version lock.
 
 `saturation_flags.csv` is a generated product and is gitignored (`*.csv`) on purpose: it is
-a 51k-row artefact that `recommended.py` rebuilds deterministically, and committing it would
+a large artefact that `recommended.py` rebuilds deterministically, and committing it would
 put a large file in every future diff. So reproducibility is locked by a small committed
 manifest instead:
 
@@ -36,7 +36,10 @@ OUT = os.path.join(OUT_DIR, "CANONICAL_vat-v1.json")
 
 
 def build() -> dict:
-    s = CM.summarise()
+    can = CM.load_canonical()
+    s = CM.summarise(can)
+    num = can.select_dtypes("number")
+    n_inf = int((num == float("inf")).sum().sum() + (num == float("-inf")).sum().sum())
     return dict(
         version="vat-v1",
         generated=datetime.date.today().isoformat(),
@@ -47,8 +50,12 @@ def build() -> dict:
                            "sat_work/research/recommended.py",
             sha256=CM.sha256(),
             rows=s["record_rows"],
-            columns=21,
-            infinities=0,
+            # Derived, never hardcoded. This was a literal `21` left over from the retired
+            # six-columns-per-pair schema; the artefact has carried 9 columns since the
+            # tier collapse, and no test asserted the field, so the lock misdescribed the
+            # file it was locking for two revisions.
+            columns=int(len(can.columns)),
+            infinities=n_inf,
             deficit_values_outside_domain=s["deficit_values_outside_domain"],
         ),
         method=s["method"],
@@ -112,9 +119,8 @@ def main() -> int:
     print(f"  version      : {fresh['version']}")
     print(f"  sha256       : {fresh['artefact']['sha256']}")
     print(f"  flagged      : {fresh['metrics']['flagged']['published_rows']:,} rows -> "
-          f"{fresh['metrics']['flagged']['canonical_rows']:,} rows")
-    print(f"  severe       : {fresh['metrics']['flagged']['published_severe_hours']} h -> "
-          f"{fresh['metrics']['flagged']['canonical_severe_hours']} h")
+          f"{fresh['metrics']['flagged']['canonical_rows']:,} rows "
+          f"({fresh['metrics']['flagged']['canonical_hours']:,} sampled hours)")
     print(f"  bias floor   : {fresh['metrics']['energy']['bias_floor_published_pct']} % -> "
           f"{fresh['metrics']['energy']['bias_floor_canonical_pct']} %")
     print(f"  specificity  : {fresh['metrics']['benchmark']['specificity_gain_x']}x episodic")

@@ -27,6 +27,7 @@ Import as a library (`from bench import ...`) or run directly to print a scorebo
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 
@@ -38,32 +39,48 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from satsim import (CONTROL_PAIRS, EU, PAIRS, RELIABLE, detect, dq_mask,  # noqa: E402
+from satsim import (BAND, CONTROL_PAIRS, EU, PAIRS, RELIABLE, detect, dq_mask,  # noqa: E402
                     load, preprocess, run_lengths)
 
 BINS = np.linspace(0.30, 1.05, 21)
-BAND = (0.35, 0.60)
 REF_ON = 0.70
 NEAR_CAP = 0.60
 THR_MOD = 0.15
-THR_SEV = 0.30
 PERS_MOD = 3
+# AUDIT ONLY -- NOT part of the exported method, NOT part of `build_export`.
+#
+# The retired `severe` tier was defined as `d > THR_SEV` for PERS_SEV samples, unbridged.
+# It is no longer exported (it was a strict subset of the adopted flag; see build_export),
+# but SATURATION_REVIEW.md quotes a like-for-like comparison of the published baseline's
+# severe tier against this rule to show the baseline inflated that tier 2.88x. Deleting the
+# rule would make a published audit finding unreproducible, so it is kept here -- clearly
+# fenced off from the canonical path, and asserted absent from the manifest by
+# test_manifest.py. Nothing in the canonical artefact or its metrics calls it.
+THR_SEV = 0.30
 PERS_SEV = 6
 # ADOPTED 2026-09 (SATURATION_REVIEW section 3.13): bridge 1-sample gaps before the
-# run-length rule for the 15-minute (k=3) tiers. A strict rule discards genuine signal --
-# +6.0 pp recall on injected ground truth for +83 FP rows, and on real data the whole
-# marginal cost lands on eu_15+eu_23, an already-contaminated same-inverter null, while
-# the clean cross-inverter control pays nothing. This is a real precision/recall
-# trade-off, not a free gain: guarding the bridged samples was tested and does not
-# dominate (step18).
+# run-length rule. A strict rule discards genuine signal -- +5.0 pp pooled recall on
+# injected ground truth for +72 FP rows, and on real data the whole marginal cost lands
+# on eu_15+eu_23, an already-contaminated same-inverter null, while the clean
+# cross-inverter control pays nothing. This is a real precision/recall trade-off, not a
+# free gain: guarding the bridged samples was tested and does not dominate (step18).
 #
-# NOT applied to the SEVERE tier (k=6): the benchmark's injected severity caps at about
-# 0.25, so it produces ZERO true positives for a >0.30 tier and cannot adjudicate the
-# rule there. Bridging would inflate the severe tier ~3x (7.1 -> 21.0 h on eu_8+eu_16)
-# on the strength of an untested analogy, in the tier most exposed to baseline bias.
-# Severe therefore stays strict until ground truth exists for it.
+# There is only ONE rule now. Earlier revisions carried a second `severe` tier
+# (d > 0.30, k=6, unbridged); it was removed because it was a strict subset of this rule
+# and so carried no information the flag or the continuous `deficit` column did not
+# already carry. Severity is recovered from `deficit` by thresholding, not from a
+# second exported tier. See `build_export`'s docstring.
 PERS_GAP = 1
-PERS_GAP_SEV = 0
+PERS_GAP_SEV = 0   # audit-only companion to THR_SEV/PERS_SEV above
+
+# The remaining constants quoted in the paper's Algorithm 1/2 Require lines. These were
+# literals buried in `broadcast` / `persist` defaults, which meant re-tuning the theta
+# window or the run-gap tolerance would silently change reported numbers without failing
+# the manifest test. Named here so `canon_metrics.method()` can freeze them too.
+THETA_WINDOW_DAYS = 31
+THETA_WINDOW = f"{THETA_WINDOW_DAYS}D"
+THETA_MIN_PERIODS = 5
+PERS_MAX_GAP_MIN = 6.0
 
 CONTROLS = list(CONTROL_PAIRS)
 
@@ -109,7 +126,7 @@ def inject(df: pd.DataFrame, a: str, b: str, C, day_on=None):
     return d, pd.Series(s > Cv, index=d.index)
 
 
-def broadcast(per_day, dayidx, labels, window="31D", minp=5):
+def broadcast(per_day, dayidx, labels, window=THETA_WINDOW, minp=THETA_MIN_PERIODS):
     """Per-day series -> full calendar -> time-based centred rolling median -> per row.
 
     Reindexing to a complete daily calendar first matters: the acquisition record has
@@ -129,7 +146,7 @@ def theta_roll(s, ref, act, dayidx, q=0.5, band=BAND):
     return broadcast(per_day, dayidx, s.index)
 
 
-def persist(raw: pd.Series, k: int, index=None, max_gap_min: float = 6.0) -> pd.Series:
+def persist(raw: pd.Series, k: int, index=None, max_gap_min: float = PERS_MAX_GAP_MIN) -> pd.Series:
     """Keep only samples inside a run of at least `k` consecutive True values.
 
     With `index` supplied, a run is also broken at any acquisition gap longer than
@@ -235,7 +252,12 @@ def det_rolling(df, fe, a, b, q=0.5, k=PERS_MOD, gap=PERS_GAP, **_):
 
 
 def det_severe(df, fe, a, b, q=0.5, k=PERS_SEV, gap=PERS_GAP_SEV, **_):
-    """The severe tier of the recommended detector: d > 0.30 for 30 minutes."""
+    """AUDIT ONLY -- the retired severe tier (d > 0.30 for 30 minutes, unbridged).
+
+    Not part of the exported method and never called by `build_export`. Kept so that the
+    like-for-like severe-tier comparison published in SATURATION_REVIEW.md stays
+    reproducible. See the note on THR_SEV above.
+    """
     d = pair_deficit(df, fe, a, b, q=q)
     base = ((fe["ref"] >= REF_ON) & (d["s"] > NEAR_CAP * d["expected"])
             & d["act"] & ~dq_mask(fe, a, b))
@@ -297,6 +319,26 @@ DETECTORS = {
 # --------------------------------------------------------------------------- #
 # scenarios
 # --------------------------------------------------------------------------- #
+def day_uniform(days, seed):
+    """A deterministic U[0,1) for each calendar day, keyed on the DATE and the seed.
+
+    This replaces `np.random.default_rng(seed).random(len(days))`, which drew one value
+    per *position* in the record. That coupled every scenario to the record length: when
+    the 2026-09 export filled four months that had been missing, the day list grew from
+    328 to 487 entries, every position shifted, and all six scenarios silently re-rolled
+    onto different days. Two runs of the same analysis then disagreed by 30x on the
+    headline false-positive count while nothing in the code had changed.
+
+    Keying on the date makes the draw a pure function of (seed, date), so completing or
+    truncating the record leaves every existing scenario exactly as it was.
+    """
+    out = np.empty(len(days), dtype=float)
+    for i, d in enumerate(days):
+        key = f"{int(seed)}|{pd.Timestamp(d).date().isoformat()}".encode()
+        out[i] = int.from_bytes(hashlib.sha256(key).digest()[:8], "big") / float(1 << 64)
+    return out
+
+
 def scenario(pair, duty=0.35, q=0.75, pattern="chronic", seed=7):
     """Build one labelled scenario. Cached -- the preprocess step is not cheap.
 
@@ -320,7 +362,7 @@ def scenario(pair, duty=0.35, q=0.75, pattern="chronic", seed=7):
 
     th_true = theta_roll(base[a] + base[b], ref0, act0, fe0["dayidx"], q=0.5)
     days = base[a].groupby(base.index.normalize()).count().pipe(lambda x: x[x > 0]).index
-    day_on = (pd.Series(np.random.default_rng(seed).random(len(days)) < duty, index=days)
+    day_on = (pd.Series(day_uniform(days, seed) < duty, index=days)
               .reindex(base.index.normalize()).fillna(False).to_numpy())
 
     d2, gt = inject(base, a, b, C, day_on if pattern == "episodic" else None)
@@ -374,37 +416,46 @@ def evaluate(score, flag, fe, a, b, gt, sev, ref_on=REF_ON) -> dict:
 # the recommended export (vat-v1), as a pure function
 # --------------------------------------------------------------------------- #
 def build_export(pairs=PAIRS, controls=CONTROLS, mask_below_gate=True):
-    """vat-v1 flags for every pair, in the published schema (plus extra columns).
+    """vat-v1 result for every pair: one continuous deficit and one binary flag.
+
+    Schema: `time`, `ref`, `dq_site_outage`, then per pair exactly two columns,
+    `{a}_{b}_deficit` and `{a}_{b}_sat`.
+
+    The single flag is the adopted primary rule -- `d > THR_MOD` held for PERS_MOD
+    consecutive samples after 1-sample gate-respecting gap bridging. Earlier revisions
+    also exported a `sat_severe` and a `sat_conservative` column; both were removed
+    deliberately, for two different reasons:
+
+      * `sat_severe` was a strict SUBSET of the flag (0 rows outside it on this record),
+        so it carried no information the flag or `deficit` did not already carry. Severity
+        is not lost: `deficit` is the continuous severity, and anyone wanting the old
+        0.30 cut thresholds that column directly.
+      * `sat_conservative` was a DIFFERENT rule (deficit minus the control-pair null),
+        not a stricter version of this one -- it flagged ~1,700 rows the primary rule
+        missed and missed ~210 the primary rule caught. It is a legitimately alternative
+        calibration rather than a tier of this one, so it is no longer exported. The
+        control-null detector is still implemented and still benchmarked (`det_control_calibrated`
+        in DETECTORS, and the `D5` row of the scoreboard); it is simply no longer a
+        published output of the canonical artefact.
 
     Contract guaranteed here and asserted in test_exports.py:
       * `time` plus every column of the published saturation_flags.csv is present, so
         existing consumers keep working (the export is a superset)
       * `deficit` never contains +/-inf
-      * `deficit`, `null_d` and `excess_vs_controls` are NaN outside the DECISION DOMAIN
-        -- `act & ref >= REF_ON & ~dq_mask`. Inside it `deficit` is bounded to [-1, 1].
-        Outside it the column is meaningless: below the gate `theta*ref -> 0` so the ratio
-        blows up (it reached -260 before this masking), and on an inactive or DQ-flagged
-        row the pair sum is not a measurement of anything.
-      * `*_sat_*` flags are 0/1 integers and are never 1 where `deficit` is NaN
+      * `deficit` is NaN outside the DECISION DOMAIN -- `act & ref >= REF_ON & ~dq_mask`.
+        Inside it `deficit` is bounded to [-1, 1]. Outside it the column is meaningless:
+        below the gate `theta*ref -> 0` so the ratio blows up (it reached -260 before this
+        masking), and on an inactive or DQ-flagged row the pair sum is not a measurement
+        of anything.
+      * `*_sat` flags are 0/1 integers and are never 1 where `deficit` is NaN
 
     One domain definition, used everywhere: this is byte-for-byte the domain that
     `evaluate()` computes AUC over. Keeping a single definition is what lets the published
     summary quote one denominator for every rate.
-
-    Persistence: all three tiers use the adopted gap-tolerant rule (PERS_GAP), i.e.
-    1-sample acquisition gaps are bridged before the run-length test. See
-    SATURATION_REVIEW.md section 3.13 for the measured trade-off.
-
-    Note on naming: `*_sat_conservative` is the null-calibrated tier. It is NOT more
-    restrictive than `*_sat_moderate` in practice (it flags more) because the control-pair
-    null often sits below 0.15. The name is a misnomer kept for continuity; treat it as an
-    alternative calibration, not a stricter one.
     """
     df = raw_df()
     fe = raw_fe()
     ref = fe["ref"]
-    null = null_curve(controls=controls)
-    binidx = np.digitize(ref, BINS).clip(1, len(BINS) - 1)
 
     out = pd.DataFrame({"time": df.index,
                         "ref": ref.round(4),
@@ -414,30 +465,17 @@ def build_export(pairs=PAIRS, controls=CONTROLS, mask_below_gate=True):
         d = pair_deficit(df, fe, a, b)
         gate = ((ref >= REF_ON) & (d["s"] > NEAR_CAP * d["expected"])
                 & d["act"] & ~dq_mask(fe, a, b))
-        qn = pd.Series(binidx, index=df.index).map(null).astype(float)
-        excess = d["deficit"] - qn
         # THE decision domain, identical to evaluate()'s `test`
         domain = d["act"] & (ref >= REF_ON) & ~dq_mask(fe, a, b)
-        if mask_below_gate:
-            qn = qn.where(domain)
-            excess = excess.where(domain)
 
         deficit = d["deficit"].replace([np.inf, -np.inf], np.nan)
         if mask_below_gate:
             deficit = deficit.where(domain)
-        moderate = persist(bridge(gate & (d["deficit"] > THR_MOD), PERS_GAP, within=gate),
-                           PERS_MOD, index=df.index)
-        severe = persist(bridge(gate & (d["deficit"] > THR_SEV), PERS_GAP_SEV, within=gate),
-                         PERS_SEV, index=df.index)
-        conserv = persist(bridge(gate & (excess > 0), PERS_GAP, within=gate),
-                          PERS_MOD, index=df.index)
+        sat = persist(bridge(gate & (d["deficit"] > THR_MOD), PERS_GAP, within=gate),
+                      PERS_MOD, index=df.index)
 
         out[f"{k}_deficit"] = deficit.round(4)
-        out[f"{k}_excess_vs_controls"] = excess.round(4)
-        out[f"{k}_null_d"] = qn.round(4)
-        out[f"{k}_sat_moderate"] = (moderate & deficit.notna()).astype(int)
-        out[f"{k}_sat_severe"] = (severe & deficit.notna()).astype(int)
-        out[f"{k}_sat_conservative"] = (conserv & deficit.notna()).astype(int)
+        out[f"{k}_sat"] = (sat & deficit.notna()).astype(int)
     # match the published file's layout: a plain RangeIndex with `time` as a column
     return out.reset_index(drop=True)
 

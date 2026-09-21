@@ -12,13 +12,13 @@ vat-v1:
                            over active samples with ref in [0.35, 0.60]
   deficit      d(t)      = 1 - s(t) / (theta(t)*ref(t))
   gate                    ref >= 0.70, s > 0.6*theta*ref, both units active, no DQ flag
-  null         q_n(ref)  = 99.5th pct of the SAME d computed on the independent control
-                           pairs, per ref bin  (an empirical, assumption-light null)
-  flags        moderate      = d > 0.15 for 3 consecutive samples
-               severe        = d > 0.30 for 6 consecutive samples
-               conservative  = d > q_n(ref) for 3 consecutive samples
-                               (null-calibrated -- NOT stricter than moderate; see
-                                bench.build_export's note on the misnomer)
+  flag         saturated = d > 0.15 for 3 consecutive samples, 1-sample gate-respecting
+                           gap bridging
+
+ONE FLAG, ONE CONTINUOUS SCORE. Earlier revisions also exported `severe` (a strict subset
+of the flag) and `conservative` (a different, control-null-calibrated rule). Both are gone:
+severity is recovered by thresholding `deficit`, and the control-null detector remains
+available as `bench.det_control_calibrated` for the benchmark. See `bench.build_export`.
 
 Outputs:
   <repo root>/saturation_flags.csv   THE CANONICAL FLAGS ARTEFACT (vat-v1)
@@ -67,9 +67,9 @@ out = B.build_export()
 out.to_csv(CANONICAL_CSV, index=False)
 
 
-def flags_for(pair, tier="moderate"):
+def flags_for(pair):
     k = f"{pair[0]}_{pair[1]}"
-    return out[f"{k}_sat_{tier}"].astype(bool)
+    return out[f"{k}_sat"].astype(bool)
 
 
 # --------------------------------------------------------------------------- #
@@ -78,14 +78,10 @@ def flags_for(pair, tier="moderate"):
 rows = []
 for a, b in PAIRS:
     pub = B.detect(df, fe, a, b)
-    mod = flags_for((a, b), "moderate")
-    sev = flags_for((a, b), "severe")
-    con = flags_for((a, b), "conservative")
+    mod = flags_for((a, b))
     rows.append(dict(pair=f"{a}_{b}",
                      pub_rows=int(pub["moderate"].sum()), vat_rows=int(mod.sum()),
                      pub_hours=pub["moderate"].sum() / 12, vat_hours=mod.sum() / 12,
-                     vat_severe_hours=sev.sum() / 12,
-                     vat_cons_hours=con.sum() / 12,
                      vat_days=pd.to_datetime(out.loc[mod, "time"]).dt.normalize().nunique()))
 cmp_ = pd.DataFrame(rows).set_index("pair")
 
@@ -150,8 +146,8 @@ print("=" * 96)
 print(f"  shape {out.shape};  infinite values {int(np.isinf(num.to_numpy()).sum())}")
 print(f"  deficit columns finite-or-NaN: "
       f"{all(not np.isinf(out[f'{a}_{b}_deficit']).any() for a, b in PAIRS)}")
-print(f"  null_d NaN below the gate: "
-      f"{all(out.loc[out['ref'] < B.REF_ON, f'{a}_{b}_null_d'].isna().all() for a, b in PAIRS)}")
+print(f"  flag columns binary: "
+      f"{all(set(out[f'{a}_{b}_sat'].unique()) <= {0, 1} for a, b in PAIRS)}")
 
 # --------------------------------------------------------------------------- #
 # 5. the canonical artefact round-trips
@@ -173,9 +169,7 @@ print(f"  rows {len(back):,} (dataset {len(df):,})   cols {back.shape[1]}   "
 print(f"  round-trip clean: {ok}")
 for a, b in PAIRS:
     k = f"{a}_{b}"
-    mod = int(back[f"{k}_sat_moderate"].sum())
-    sev = int(back[f"{k}_sat_severe"].sum())
-    print(f"    {k}: moderate {mod:5,} rows = {mod/12:7.1f} h   "
-          f"severe {sev:4,} rows = {sev/12:6.1f} h")
+    n = int(back[f"{k}_sat"].sum())
+    print(f"    {k}: {n:5,} rows = {n/12:7.1f} h")
 assert ok, "canonical artefact did not round-trip cleanly"
 print("\nwrote", CANONICAL_CSV)

@@ -1,0 +1,159 @@
+﻿
+============================================================================================
+A. THE RECORD
+============================================================================================
+  rows 76,933   dates 487   calendar days 488
+  span 2025-05-01 06:15:00 -> 2026-08-31 20:20:00
+  modal 5-min step on 76,289 of 76,932 (99.2 %)
+  reference units |R| = 11
+
+============================================================================================
+B. DATA-QUALITY SHARES  (per unit-timestamp unless noted)
+============================================================================================
+  unit-timestamp cells 1,846,392
+  off       73,895    4.00 %
+  stale          0    0.00 %
+  neg          259    0.01 %
+  outage       553    0.72 %   (site-wide, share of timestamps)
+  mask     380,211   20.59 %
+
+============================================================================================
+C. DECISION DOMAIN
+============================================================================================
+  eu_8+eu_16     15,188 rows   19.7 % of record
+  eu_10+eu_18     19,080 rows   24.8 % of record
+  eu_13+eu_21     14,650 rows   19.0 % of record
+
+============================================================================================
+D. FLAGGED EXPOSURE  (canonical sat flag)
+============================================================================================
+  eu_8+eu_16      6,584 rows    548.7 h   186 days
+  eu_10+eu_18      8,932 rows    744.3 h   226 days
+  eu_13+eu_21      6,075 rows    506.2 h   169 days
+  TOTAL              21,591 rows   1799.2 h   244 days (union)
+
+  affected days by calendar month:
+     month  2:     8 days
+     month  3:    12 days
+     month  4:    21 days
+     month  5:    52 days
+     month  6:    49 days
+     month  7:    51 days
+     month  8:    42 days
+     month  9:     9 days
+     May+Jun+Jul = 152 of 244
+
+============================================================================================
+E. PEER RATIO, UNBINNED OVER r >= 0.70  (the paper's tab:mppt_peer)
+============================================================================================
+  pair          channel        ratio  vs peers         n
+  EU8 + EU16    shared         0.863    -13.7%    15,247
+  EU10 + EU18   shared         0.851    -14.9%    19,080
+  EU13 + EU21   shared         0.896    -10.4%    14,650
+  EU1 + EU3     independent    0.993     -0.7%    19,071
+  EU4 + EU12    independent    1.007      0.7%    19,074
+  EU15 + EU23   independent    1.000     -0.0%    19,074
+
+  robustness - a single common mask over all 12 units involved (n = 10,752):
+     EU8 + EU16    shared         0.870    -13.0%    10,752
+     EU10 + EU18   shared         0.873    -12.7%    10,752
+     EU13 + EU21   shared         0.913     -8.7%    10,752
+     EU1 + EU3     independent    0.993     -0.7%    10,749
+     EU4 + EU12    independent    1.007      0.7%    10,752
+     EU15 + EU23   independent    1.002      0.2%    10,752
+
+  robustness - shared pairs against each of the three disjoint peers:
+     EU8+EU16    0.850 - 0.863
+     EU10+EU18   0.840 - 0.851
+     EU13+EU21   0.878 - 0.896
+
+============================================================================================
+F. ROLL-OFF SHAPE  (bin medians, rescaled to 1 in the mid band)
+============================================================================================
+  EU8+EU16    top bin 0.574   monotone from r~None
+  EU10+EU18   top bin 0.578   monotone from r~0.765
+  EU13+EU21   top bin 0.582   monotone from r~0.765
+  EU4+EU12    control range 0.997 - 1.020
+  EU15+EU23   control range 0.991 - 1.018
+
+============================================================================================
+G. PER-UNIT HIGH-IRRADIANCE SCORES  (r >= 0.75, each unit scored alone)
+============================================================================================
+  six shared-channel units : +0.152 .. +0.184
+  other 17 units           : -0.005 .. +0.010
+  excluded eu_7            : -0.232
+  ranked top 8: eu_10 +0.184, eu_8 +0.181, eu_18 +0.178, eu_16 +0.171, eu_21 +0.169, eu_13 +0.152, eu_3 +0.010, eu_15 +0.008
+
+============================================================================================
+H. CALIBRATION AGAINST THE MODEL-FREE MEASUREMENT
+============================================================================================
+  (medians over the decision domain; step26 prints the gate-AVERAGED pair of
+   numbers that the paper's calibration paragraph quotes)
+  shared   model +0.155   truth +0.137   residual +0.0177
+  control  model +0.005   truth +0.000   residual +0.0047
+
+  control-pair median deficit, model, by season (r >= 0.5):
+     December  -0.005 -0.001 +0.002
+     June      +0.005 +0.002 +0.007
+
+============================================================================================
+I. INVERTER-TOPOLOGY NATURAL EXPERIMENT
+============================================================================================
+  inv 6: eu_8+eu_16 d +0.176   mates ['eu_24'] d +0.000   gap +0.176
+  inv 2: eu_10+eu_18 d +0.181   mates ['eu_2', 'eu_3', 'eu_11', 'eu_19'] d -0.001   gap +0.182
+  inv 4: eu_13+eu_21 d +0.160   mates ['eu_5', 'eu_6', 'eu_14', 'eu_22'] d +0.001   gap +0.159
+
+============================================================================================
+J. NAMEPLATE CROSS-CHECK
+============================================================================================
+  median theta 8,787 W   ratio 0.976   sd 0.017   max dev 4.8 %
+
+============================================================================================
+K. ENERGY AND THE BIAS FLOOR
+============================================================================================
+  shared eu_8+eu_16        2,871 kWh
+  shared eu_10+eu_18        3,699 kWh
+  shared eu_13+eu_21        2,680 kWh
+  ctrl   eu_1+eu_3           215 kWh
+  ctrl   eu_4+eu_12          172 kWh
+  ctrl   eu_15+eu_23          274 kWh
+  shared total 9,249 kWh   control total 661 kWh   bias floor 7 %
+
+============================================================================================
+L. FLEET-WIDE NULL  (cross-inverter independent pairs)
+============================================================================================
+  117 cross-inverter independent pairs
+  median phantom loss 141 kWh/pair
+
+============================================================================================
+M. CONTROL-PAIR SELF-REFERENCE  (how much do control units move r?)
+============================================================================================
+  |R| = 11; control-pair units inside R: ['eu_1', 'eu_12', 'eu_15', 'eu_23', 'eu_3', 'eu_4'] (6 of 11)
+  corr(r, r without the control units) = 0.9998
+     eu_1+eu_3     in-domain median deficit +0.006
+     eu_4+eu_12    in-domain median deficit +0.004
+     eu_15+eu_23    in-domain median deficit +0.005
+  -> worst control-pair deficit +0.006 against a shared-pair signal of ~0.18
+
+============================================================================================
+N. THE UNEXPLAINED CONTROL PAIR
+============================================================================================
+  EU15+EU23: 161 flagged rows on 7 distinct days
+     flagged deficit: median +0.241, p90 +0.310, max 1.000
+     in-domain median +0.005
+
+============================================================================================
+O. CEILING-PINNED (D4) BY REGIME  (the negative result)
+============================================================================================
+  episodic  eu_1+eu_3      D4 auc 0.519 fp  3795   | D1 auc 0.962
+  episodic  eu_15+eu_23    D4 auc 0.512 fp  4305   | D1 auc 0.960
+  chronic   35% eu_1+eu_3  D4 auc 1.000 fp     8   | D1 auc 0.889
+  chronic  100% eu_1+eu_3  D4 auc 1.000 fp     8   | D1 auc 0.889
+  chronic   35% eu_4+eu_12 D4 auc 0.999 fp     5   | D1 auc 0.963
+
+============================================================================================
+P. SEVERITY RECOVERY FROM THE deficit COLUMN
+============================================================================================
+  eu_8+eu_16: in-domain d>0.30  1246; of those NOT flagged  538; flagged rows  6584; of flagged, d>0.30 10.8%; max flagged d 0.399; max in-domain d 1.000
+  eu_10+eu_18: in-domain d>0.30  1689; of those NOT flagged  524; flagged rows  8932; of flagged, d>0.30 13.0%; max flagged d 0.400; max in-domain d 1.000
+  eu_13+eu_21: in-domain d>0.30   894; of those NOT flagged  361; flagged rows  6075; of flagged, d>0.30  8.8%; max flagged d 0.400; max in-domain d 1.000

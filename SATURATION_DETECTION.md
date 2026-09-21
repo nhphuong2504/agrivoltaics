@@ -65,12 +65,12 @@ the method is estimated from the data and adapts over time.
 
 | Property | Value |
 |---|---|
-| Rows | 51,005 (5-minute steps) |
-| Span | 2025-05-01 06:15 → 2026-07-25 21:10 (≈ 15 months) |
-| Days with data | 328 |
-| Full 5-min grid for the span | 129,780 rows (i.e. night hours mostly absent) |
-| Acquisition gaps > 1 h | 331 |
-| Major gaps | ≈ Aug–Sep 2025 and Mar–Apr 2026 (each ≈ 61 days) |
+| Rows | 76,933 (5-minute steps) |
+| Span | 2025-05-01 06:15 → 2026-08-31 20:20 (≈ 16 months) |
+| Days with data | 487 |
+| Full 5-min grid for the span | 140,713 rows (i.e. night hours mostly absent) |
+| Acquisition gaps > 1 h | 490 |
+| Major gaps | one ≈ 47 h gap in May 2026; no other month exceeds 24 h |
 
 First-pass findings that shaped the design:
 
@@ -214,7 +214,7 @@ Two severity tiers are emitted: **moderate** (deficit > 15 %, ≥ 15 min) and **
 > **The interpretation below is falsified** (see `SATURATION_REVIEW.md` §7.2 and the
 > fleet-wide null in §3.12). The arithmetic is right; the reading of the 122 rows is not.
 > Those flags are **baseline bias**, not real constraint events: the published expectation
-> fabricates a median 803 kWh/pair of phantom loss across 117 independent pairs that cannot
+> fabricates a median 857 kWh/pair of phantom loss across 117 independent pairs that cannot
 > saturate, against 92 kWh/pair for vat-v1. Note also that only `eu_1+eu_3` crosses
 > inverters — `eu_4+eu_12` and `eu_15+eu_23` are same-inverter pairs and carry a
 > co-movement common mode worth roughly 2× tail flags, so they are magnitude nulls rather
@@ -272,7 +272,7 @@ blocks (correctly masked). Severe events: 368 / 334 / 243 rows respectively.
 
 ## 8. Output Files
 
-### 8.1 `saturation_flags.csv` — 51,005 × 12, aligned 1:1 with the source timestamps
+### 8.1 `saturation_flags.csv` — 76,933 × 9, aligned 1:1 with the source timestamps
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -297,8 +297,14 @@ the events log to distinguish.
 > (`active ∧ ref ≥ 0.70 ∧ no DQ`), so the "filter before analyzing" step is no longer
 > required — an unfiltered `.mean()` is the in-domain mean. This paragraph still
 > describes the published column, which is what the rest of this document specifies.
-> Canonical schema is 51,005 × 21, not × 12: vat-v1 adds `null_d`,
-> `excess_vs_controls` and `sat_conservative` per pair.
+> **The canonical schema also differs from the one specified above.** The canonical
+> `saturation_flags.csv` is 76,933 × 9, and its per-pair columns are `_deficit` and a
+> single `_sat` flag. The published `<pair>_sat_moderate` / `<pair>_sat_severe` columns are
+> gone: `sat_severe` was a strict subset of the flag, and `sat_moderate` is simply `sat`
+> under a tier name. Severity now comes from thresholding the continuous `deficit` column
+> (breaking the published v1 column contract — see `sat_work/tests/_helpers.py`), and the
+> `null_d` / `excess_vs_controls` support columns went with the retired control-null tier,
+> which remains available as a scored competitor via `bench.det_control_calibrated`.
 
 ### 8.2 `data_quality_events.csv` — 1,321 events
 

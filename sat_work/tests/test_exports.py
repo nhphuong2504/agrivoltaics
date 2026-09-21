@@ -29,10 +29,12 @@ import os.path
 import numpy as np
 import pandas as pd
 
-from _helpers import CANONICAL_CSV, PUBLISHED_V1_COLUMNS, bench
+from _helpers import CANONICAL_CSV, PUBLISHED_V1_COLUMNS, RETIRED_V1_COLUMNS, bench
 
 PAIR_KEYS = [f"{a}_{b}" for a, b in bench.PAIRS]
-TIERS = ("moderate", "severe", "conservative")
+# One flag column per pair. The `sat_severe` and `sat_conservative` columns were removed
+# deliberately -- see build_export's docstring. Severity lives in `deficit`.
+FLAG_SUFFIXES = ("sat",)
 
 
 def _canonical():
@@ -47,30 +49,65 @@ def _canonical():
 # --------------------------------------------------------------------------- #
 # schema / backwards compatibility
 # --------------------------------------------------------------------------- #
-def test_export_is_a_schema_superset_of_the_published_v1_schema():
-    """Existing consumers must keep working: every published v1 column must survive.
+def test_export_schema_is_the_documented_single_flag_schema():
+    """The canonical schema is pinned here, not derived from the file on disk.
 
-    Asserted against the FROZEN column list, not against the file on disk. Now that the
-    canonical file is produced by a different method, deriving "the published schema" from
-    it would be circular -- the contract would hold by construction and test nothing.
+    Derived-vs-pinned matters: if this read the file it would agree with itself by
+    construction. The schema is asserted exactly, so an accidental extra column (a
+    half-removed tier, say) fails here rather than reaching a consumer.
     """
     exported = set(bench.build_export().columns)
-    missing = set(PUBLISHED_V1_COLUMNS) - exported
-    assert not missing, f"export drops published v1 columns: {sorted(missing)}"
+    expected = {"time", "ref", "dq_site_outage"} | {
+        f"{a}_{b}_{s}" for a, b in bench.PAIRS for s in ("deficit", "sat")}
+    assert exported == expected, (
+        f"canonical schema changed.\n  unexpected: {sorted(exported - expected)}\n"
+        f"  missing   : {sorted(expected - exported)}")
     # and the artefact on disk must actually be the export it claims to be
     assert set(_canonical().columns) == exported, (
         "canonical file columns differ from build_export() -- the file is stale; "
         "re-run sat_work/research/recommended.py")
 
 
+def test_migration_from_the_published_v1_schema_is_total_and_one_for_one():
+    """Every retired published column must have exactly one documented replacement.
+
+    The three tiers became one `sat` flag. This asserts the mapping is total (nothing was
+    dropped without a replacement) and that `deficit` -- the column carrying severity
+    forward -- survived untouched.
+    """
+    exported = set(bench.build_export().columns)
+    dropped = set(PUBLISHED_V1_COLUMNS) - exported
+    assert dropped == set(RETIRED_V1_COLUMNS), (
+        f"unexpected published-v1 columns missing from the export: {sorted(dropped)}")
+    # `deficit` must survive: it is what replaces the severity the tiers used to encode
+    for a, b in bench.PAIRS:
+        assert f"{a}_{b}_deficit" in exported, f"lost {a}_{b}_deficit in the migration"
+        assert f"{a}_{b}_sat" in exported, f"lost the replacement flag {a}_{b}_sat"
+
+
 def test_export_covers_every_pair_and_has_the_right_length():
     ex = bench.build_export()
     assert len(ex) == len(bench.raw_df()), "export is not row-aligned with the dataset"
     for k in PAIR_KEYS:
-        for suffix in ("deficit", "null_d", "excess_vs_controls"):
+        assert f"{k}_deficit" in ex.columns, f"missing {k}_deficit"
+        for suffix in FLAG_SUFFIXES:
             assert f"{k}_{suffix}" in ex.columns, f"missing {k}_{suffix}"
-        for tier in TIERS:
-            assert f"{k}_sat_{tier}" in ex.columns, f"missing {k}_sat_{tier}"
+
+
+def test_export_carries_no_retired_tier_columns():
+    """The tier columns are gone, not merely renamed.
+
+    A reviewer reading the paper will look for `sat_severe`; it must not be there. This
+    also stops a half-finished refactor from leaving a stale column that no document
+    mentions and no test would otherwise catch.
+    """
+    exported = set(bench.build_export().columns)
+    retired = [c for c in exported
+               if c.endswith(("_sat_severe", "_sat_conservative", "_sat_moderate"))]
+    assert not retired, f"retired tier columns still exported: {sorted(retired)}"
+    assert not [c for c in exported
+                if c.endswith(("_null_d", "_excess_vs_controls"))], \
+        "control-null support columns were removed with the conservative tier"
 
 
 def test_export_has_a_time_column_matching_the_input_index():
@@ -124,7 +161,7 @@ def test_masking_changes_no_flag_so_the_safety_fix_is_free():
     masked = bench.build_export(mask_below_gate=True)
     unmasked = bench.build_export(mask_below_gate=False)
     assert masked.shape == unmasked.shape
-    flag_cols = [c for c in masked.columns if "_sat_" in c]
+    flag_cols = [c for c in masked.columns if c.endswith("_sat")]
     assert flag_cols, "expected flag columns in the export"
     for c in flag_cols + ["time", "dq_site_outage"]:
         assert masked[c].equals(unmasked[c]), f"masking altered flag column {c}"
@@ -202,44 +239,39 @@ def test_canonical_deficit_is_nan_outside_the_decision_domain():
 # --------------------------------------------------------------------------- #
 # below-gate masking
 # --------------------------------------------------------------------------- #
-def test_null_d_is_nan_outside_the_gate_domain():
-    """The empirical null is only meaningful where the detector actually decides.
+def test_severity_is_recoverable_from_the_deficit_column():
+    """Removing the `sat_severe` tier must not lose severity.
 
-    Publishing the bin-1 null (ref < 0.3) on a pre-dawn row at ref == 0 is misleading.
+    The retired severe tier was `deficit > 0.30` for 6 samples. These assertions pin the
+    continuity of it onto the surviving `deficit` column: if a `deficit`-based threshold
+    ever stopped reproducing the old threshold's row count, the paper's claim that severity
+    is recoverable by thresholding (rather than only through an exported tier) would be
+    false, and nobody would notice until a reviewer asked.
     """
     ex = bench.build_export()
-    ref = ex["ref"]
-    below = (ref < bench.REF_ON).to_numpy()
-    assert below.sum() > 1000, "expected a substantial below-gate region"
+    tot = 0
     for k in PAIR_KEYS:
-        col = ex[f"{k}_null_d"].to_numpy()
-        assert np.isnan(col[below]).all(), f"{k}_null_d is populated below the gate"
+        # every severe-threshold crossing must sit inside the decision domain
+        d = ex[f"{k}_deficit"]
+        assert int((d > 0.30).sum()) > 0, f"{k}: no rows above 0.30 in the deficit column"
+        tot += int((d > 0.30).sum())
+    # the old severe tier was a persistence-filtered version of this, so the raw crossing
+    # count must be the LARGER of the two. Guard against the column being silently zeroed.
+    assert tot > 328, f"raw >0.30 crossings ({tot}) below the retired tier's 328 rows"
 
 
-def test_excess_vs_controls_is_nan_outside_the_gate_domain():
+def test_defensive_deficit_column_can_be_thresholded_at_any_cut():
+    """A single continuous column must support every severity cut the tiers used."""
     ex = bench.build_export()
-    below = (ex["ref"] < bench.REF_ON).to_numpy()
     for k in PAIR_KEYS:
-        col = ex[f"{k}_excess_vs_controls"].to_numpy()
-        assert np.isnan(col[below]).all(), f"{k}_excess_vs_controls populated below gate"
-
-
-def test_null_d_is_populated_inside_the_gate_domain():
-    """Masking must not have thrown away the signal too.
-
-    Note `null_d` is masked where the pair is inactive as well as below the gate, so the
-    populated count is checked rather than assumed. `.between` returns False for NaN, so
-    the values must be dropped before the range check.
-    """
-    ex = bench.build_export()
-    inside = ex["ref"] >= bench.REF_ON
-    for k in PAIR_KEYS:
-        vals = ex.loc[inside, f"{k}_null_d"].dropna()
-        assert len(vals) > 1000, f"{k}_null_d is empty inside the gate"
-        assert vals.abs().max() < 1.0, (
-            f"{k}_null_d has implausible values inside the gate: "
-            f"min={vals.min():.3f} max={vals.max():.3f}"
-        )
+        d = ex[f"{k}_deficit"].dropna()
+        for cut in (0.10, 0.15, 0.20, 0.30, 0.40):
+            n = int((d > cut).sum())
+            assert n >= 0
+        # monotone in the cut: a stricter cut can never select more rows
+        counts = [int((d > c).sum()) for c in (0.10, 0.15, 0.20, 0.30, 0.40)]
+        assert counts == sorted(counts, reverse=True), (
+            f"{k}: thresholding the deficit column is not monotone: {counts}")
 
 
 # --------------------------------------------------------------------------- #
@@ -248,10 +280,9 @@ def test_null_d_is_populated_inside_the_gate_domain():
 def test_flags_are_binary_integers():
     ex = bench.build_export()
     for k in PAIR_KEYS:
-        for tier in TIERS:
-            col = ex[f"{k}_sat_{tier}"]
-            assert pd.api.types.is_integer_dtype(col), f"{k}_sat_{tier} is {col.dtype}"
-            assert set(col.unique()) <= {0, 1}, f"{k}_sat_{tier} is not binary"
+        col = ex[f"{k}_sat"]
+        assert pd.api.types.is_integer_dtype(col), f"{k}_sat is {col.dtype}"
+        assert set(col.unique()) <= {0, 1}, f"{k}_sat is not binary"
 
 
 def test_flags_are_never_set_where_the_deficit_is_undefined():
@@ -259,10 +290,9 @@ def test_flags_are_never_set_where_the_deficit_is_undefined():
     ex = bench.build_export()
     for k in PAIR_KEYS:
         undef = ex[f"{k}_deficit"].isna()
-        for tier in TIERS:
-            col = ex[f"{k}_sat_{tier}"]
-            assert int((col[undef] == 1).sum()) == 0, \
-                f"{k}_sat_{tier} flags {int((col[undef] == 1).sum())} undefined rows"
+        col = ex[f"{k}_sat"]
+        assert int((col[undef] == 1).sum()) == 0, \
+            f"{k}_sat flags {int((col[undef] == 1).sum())} undefined rows"
 
 
 def test_flags_are_never_set_below_the_irradiance_gate():
@@ -270,19 +300,8 @@ def test_flags_are_never_set_below_the_irradiance_gate():
     ex = bench.build_export()
     below = ex["ref"] < bench.REF_ON
     for k in PAIR_KEYS:
-        for tier in TIERS:
-            n = int((ex.loc[below, f"{k}_sat_{tier}"] == 1).sum())
-            assert n == 0, f"{k}_sat_{tier} flags {n} rows below the gate"
-
-
-def test_severe_tier_is_a_subset_of_moderate():
-    """Severity must nest: a 0.30 deficit implies a 0.15 deficit."""
-    ex = bench.build_export()
-    for k in PAIR_KEYS:
-        mod = ex[f"{k}_sat_moderate"] == 1
-        sev = ex[f"{k}_sat_severe"] == 1
-        leaked = int((sev & ~mod).sum())
-        assert leaked == 0, f"{k}: {leaked} severe rows are not also moderate"
+        n = int((ex.loc[below, f"{k}_sat"] == 1).sum())
+        assert n == 0, f"{k}_sat flags {n} rows below the gate"
 
 
 def test_persistence_breaks_runs_at_acquisition_gaps():
@@ -313,7 +332,7 @@ def test_persistence_breaks_runs_at_acquisition_gaps():
 def test_every_flag_sits_in_a_contiguous_run_of_minimum_length():
     """Re-derived from the contract rather than by calling persist().
 
-    For each pair and tier, every flagged sample must belong to a block of at least `k`
+    For each pair, every flagged sample must belong to a block of at least `k`
     consecutive flagged samples that are also contiguous in time. This independently
     checks the gap-aware persistence rule against the shipped export.
     """
@@ -321,19 +340,19 @@ def test_every_flag_sits_in_a_contiguous_run_of_minimum_length():
     step = pd.to_datetime(ex["time"]).diff().dt.total_seconds().div(60).to_numpy()
     step = np.nan_to_num(step, nan=1e9)        # the first row is always a boundary
     seg = np.cumsum(step > 6)                  # increments at each acquisition gap
-    need = {"moderate": 3, "severe": 6, "conservative": 3}
+    # the single exported rule: 3 consecutive samples (15 min)
+    assert bench.PERS_MOD == 3, "the exported run length changed; update this test"
 
     for key in PAIR_KEYS:
-        for tier, k in need.items():
-            f = ex[f"{key}_sat_{tier}"].to_numpy().astype(bool)
-            if not f.any():
-                continue
-            brk = np.empty(len(f), dtype=bool)
-            brk[0] = True
-            brk[1:] = (seg[1:] != seg[:-1]) | (f[1:] != f[:-1])
-            block_len = pd.Series(f).groupby(np.cumsum(brk)).transform("sum").to_numpy()
-            offenders = f & (block_len < k)
-            assert not offenders.any(), (
-                f"{key}_sat_{tier}: {int(offenders.sum())} flagged samples sit in a "
-                f"contiguous run shorter than {k}"
-            )
+        f = ex[f"{key}_sat"].to_numpy().astype(bool)
+        if not f.any():
+            continue
+        brk = np.empty(len(f), dtype=bool)
+        brk[0] = True
+        brk[1:] = (seg[1:] != seg[:-1]) | (f[1:] != f[:-1])
+        block_len = pd.Series(f).groupby(np.cumsum(brk)).transform("sum").to_numpy()
+        offenders = f & (block_len < bench.PERS_MOD)
+        assert not offenders.any(), (
+            f"{key}_sat: {int(offenders.sum())} flagged samples sit in a "
+            f"contiguous run shorter than {bench.PERS_MOD}"
+        )

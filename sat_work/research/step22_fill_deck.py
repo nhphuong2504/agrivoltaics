@@ -53,7 +53,7 @@ for a, b in __import__("bench").PAIRS:
     k = f"{a}_{b}"
     PAIR_KEYS.append(k)
     p = F["per_pair"][k]
-    PAIR_ROWS.append((f"{a} + {b}", p["canonical_rows"], p["canonical_severe_rows"]))
+    PAIR_ROWS.append((f"{a} + {b}", p["canonical_rows"]))
 H = CM.SAMPLES_PER_HOUR
 
 
@@ -159,10 +159,10 @@ for sh in s3.shapes:
 add_table(
     s3, "SATX_S3_TABLE",
     left=Inches(0.40), top=Inches(1.55), width=Inches(3.75), height=Inches(1.55),
-    header=["Shared MPPT pair", "Saturated", "Severe"],
-    rows=[[r[0], hrs(r[1]), hrs(r[2])] for r in PAIR_ROWS]
-         + [["Total", hrs(F["canonical_rows"]), hrs(F["canonical_severe_rows"])]],
-    widths=[42, 30, 28], size=10.5, header_size=10.5,
+    header=["Shared MPPT pair", "Saturated"],
+    rows=[[r[0], hrs(r[1])] for r in PAIR_ROWS]
+         + [["Total", hrs(F["canonical_rows"])]],
+    widths=[60, 40], size=11, header_size=11,
 )
 
 s3_body = add_box(s3, "SATX_S3_BODY", Inches(0.40), Inches(3.30), Inches(3.75), Inches(3.7))
@@ -173,8 +173,7 @@ write_lines(s3_body.text_frame, [
     ("Detection (vat-v1)", 0, True, ACCENT),
     ("expected = theta(t) * ref", 1, False, MUTED),
     ("deficit = 1 - measured / expected", 1, False, MUTED),
-    ("moderate: > 15 % for 15 min", 1, False, MUTED),
-    ("severe: > 30 % for 30 min", 1, False, MUTED),
+    ("saturated: deficit > 15 % for 15 min", 1, False, MUTED),
     ("theta(t) is a slope in watts, so it can be checked against the 9.0 kW nameplate - "
      "and it reproduces it to within 4.1 %.", 0, False, INK),
 ], size=10)
@@ -204,18 +203,18 @@ title = add_box(s4, "SATX_S4_TITLE",
                 Inches(0.70), Inches(0.30), Inches(12.0), Inches(0.75))
 write_lines(title.text_frame, [
     (f"Results: {F['canonical_hours']:,.1f} sampled hours of saturation across three shared "
-     f"MPPT channels, {F['canonical_severe_hours']:,.1f} h of it severe", 0, True, INK),
+     f"MPPT channels", 0, True, INK),
 ], size=19)
 
 add_table(
     s4, "SATX_S4_TABLE",
     left=Emu(643467), top=Inches(1.35), width=Emu(10905066), height=Inches(2.0),
-    header=["Shared MPPT pair", "moderate", "severe", "flagged days", "apparent lost energy"],
-    rows=[[r[0], hrs(r[1]), hrs(r[2]), str(DAYS[k]), f"{KWH[k]:,} kWh"]
+    header=["Shared MPPT pair", "saturated hours", "flagged days", "apparent lost energy"],
+    rows=[[r[0], hrs(r[1]), str(DAYS[k]), f"{KWH[k]:,} kWh"]
           for r, k in zip(PAIR_ROWS, PAIR_KEYS)]
-         + [["Total", hrs(F["canonical_rows"]), hrs(F["canonical_severe_rows"]), "-",
+         + [["Total", hrs(F["canonical_rows"]), "-",
              f"{E['shared_canonical_kwh']:,} kWh"]],
-    widths=[26, 19, 17, 18, 22], size=13, header_size=12,
+    widths=[28, 24, 20, 28], size=14, header_size=12,
 )
 
 body = add_box(s4, "SATX_S4_BODY",
@@ -225,14 +224,17 @@ write_lines(body.text_frame, [
      f"The same estimator applied to three pairs on independent trackers attributes only "
      f"{E['control_canonical_kwh']:,} kWh to them - "
      f"{E['bias_floor_canonical_pct']} % of the claimed loss - and across all 117 "
-     f"cross-inverter independent pairs the median phantom loss is 92 kWh/pair. That is the "
+     f"cross-inverter independent pairs the median phantom loss is 141 kWh/pair. That is the "
      f"residual precision of the energy figure.", 0, False, INK),
     ("The seasonal structure is coherent: flags peak in May-July, vanish in the acquisition "
      "gaps and when the pairs are off, and show a secondary peak on cold, clear February "
      "days.", 0, False, INK),
-    (f"Canonical artefact: saturation_flags.csv ({S['record_rows']:,} x 21), regenerated from "
-     f"vat-v1 and locked by sat_work/canonical/CANONICAL_vat-v1.json. Guarded by "
+    (f"Canonical artefact: saturation_flags.csv ({S['record_rows']:,} x "
+     f"{3 + 2 * len(PAIR_KEYS)}), regenerated from vat-v1 and locked by "
+     f"sat_work/canonical/CANONICAL_vat-v1.json. Guarded by "
      f"{test_count()} regression tests.", 0, False, MUTED),
+    ("One flag per pair. Severity is not a second column: the continuous deficit is exported, "
+     "so any stricter cut is a threshold on it.", 0, False, MUTED),
     ("Known limitation: the raw deficit column is only defined inside the decision domain "
      "(ref >= 0.70, both units active, no data-quality flag); it is NaN elsewhere by design.",
      0, False, MUTED),
@@ -240,8 +242,8 @@ write_lines(body.text_frame, [
 
 prs.save(SRC)
 print("wrote", SRC)
-print(f"  slide 3: saturated hours {F['canonical_hours']:,.1f} h, severe "
-      f"{F['canonical_severe_hours']:,.1f} h, figure {'placed' if os.path.exists(FIGURE) else 'MISSING'}")
-print(f"  slide 4: {F['canonical_hours']:,.1f} h moderate, {F['canonical_severe_hours']:,.1f} h severe, "
+print(f"  slide 3: saturated hours {F['canonical_hours']:,.1f} h, "
+      f"figure {'placed' if os.path.exists(FIGURE) else 'MISSING'}")
+print(f"  slide 4: {F['canonical_hours']:,.1f} h saturated, "
       f"{E['shared_canonical_kwh']:,} kWh, bias floor {E['bias_floor_canonical_pct']} %")
 print(f"  tests counted: {test_count()}")

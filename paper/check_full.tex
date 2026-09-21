@@ -1,0 +1,27 @@
+% Compile harness for full_part.tex under IEEEtran, two-column.
+%
+%     pdflatex -interaction=nonstopmode check_full.tex   (run twice)
+%
+% This is the real target format, so it catches what a single-column test does
+% not: column overflow, algorithm floats that cannot be placed, and equations
+% too wide for an IEEE column.
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% placeholder art so the figure boxes have a size without shipping the images
+\usepackage{tikz}
+\renewcommand{\includegraphics}[2][]{\tikz\draw[gray] (0,0) rectangle (7,3.2);}
+
+\begin{document}
+\title{Compile check}
+\author{}
+\maketitle
+
+\section{Results}
+\input{full_part.tex}
+
+\end{document}

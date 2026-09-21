@@ -70,18 +70,11 @@ for a, b in B.PAIRS:
     rows.append(dict(pair=f"{a}+{b}",
                      pub_rows=p["published_rows"], can_rows=p["canonical_rows"],
                      pub_h=round(p["published_rows"] / CM.SAMPLES_PER_HOUR, 1),
-                     can_h=round(p["canonical_rows"] / CM.SAMPLES_PER_HOUR, 1),
-                     pub_sev_rows=p["published_severe_rows"],
-                     can_sev_rows=p["canonical_severe_rows"],
-                     pub_sev_h=round(p["published_severe_rows"] / CM.SAMPLES_PER_HOUR, 1),
-                     can_sev_h=round(p["canonical_severe_rows"] / CM.SAMPLES_PER_HOUR, 1)))
+                     can_h=round(p["canonical_rows"] / CM.SAMPLES_PER_HOUR, 1)))
 print(pd.DataFrame(rows).set_index("pair").to_string())
 print(f"\n   TOTALS  published {F['published_rows']:,} rows / {F['published_hours']:,.1f} h"
       f"   ->   canonical {F['canonical_rows']:,} rows / {F['canonical_hours']:,.1f} h"
       f"   ({F['row_change_pct']:+.1f} %)")
-print(f"   SEVERE  published {F['published_severe_hours']:,.1f} h ({F['published_severe_rows']}"
-      f" rows) -> canonical {F['canonical_severe_hours']:,.1f} h "
-      f"({F['canonical_severe_rows']} rows)   ({F['severe_inflation_x']:.2f}x removed)")
 
 # --------------------------------------------------------------------------- #
 print()
@@ -121,7 +114,7 @@ print("=" * 100)
 print(f"   false-positive rows on unclipped days, pooled over the 2 episodic scenarios:")
 print(f"      published {BM['episodic_fp_published']:,}  ->  canonical "
       f"{BM['episodic_fp_canonical']:,}   = {BM['specificity_gain_x']}x")
-print(f"      (per-scenario ratios span 48x-820x; do not quote the pooled figure alone)")
+print(f"      (per-scenario ratios span 4x-58x; do not quote the pooled figure alone)")
 print(f"   AUC: published {BM['episodic_auc_published']:.3f}  ->  canonical "
       f"{BM['episodic_auc_canonical']:.3f}")
 

@@ -115,9 +115,13 @@ rows = []
 for a, b in B.PAIRS:
     k = f"{a}_{b}"
     pub = B.detect(df, fe, a, b)
-    cm = can[f"{k}_sat_moderate"].astype(bool).to_numpy()
-    cs = can[f"{k}_sat_severe"].astype(bool).to_numpy()
+    cm = can[f"{k}_sat"].astype(bool).to_numpy()
     pm, ps = pub["moderate"], pub["severe"]
+    # AUDIT-ONLY: the retired severe tier, recomputed with its own rule (d > 0.30 for 6
+    # samples, unbridged) via bench.det_severe. It must be the like-for-like rule, NOT a
+    # raw threshold on `deficit`: comparing a persistence-filtered published tier against
+    # an unfiltered cut would select more rows on the canonical side and invert the finding.
+    cs = B.det_severe(df, fe, a, b)[1].to_numpy()
     rows.append(dict(pair=f"{a}+{b}",
                      pub_rows=int(pm.sum()), can_rows=int(cm.sum()),
                      pub_h=pm.sum() / SAMPLES_PER_HOUR, can_h=cm.sum() / SAMPLES_PER_HOUR,
@@ -131,15 +135,16 @@ print(T.round(1).to_string())
 tp = int(T.pub_rows.sum()); tc = int(T.can_rows.sum())
 sp = T.pub_sev_h.sum(); sc = T.can_sev_h.sum()
 row("canonical vs published, total",
-    "moderate tier, all three shared pairs pooled",
+    "single `sat` flag, all three shared pairs pooled",
     f"{tp:,} rows / {T.pub_h.sum():,.1f} h  ->  {tc:,} rows / {T.can_h.sum():,.1f} h "
     f"({100*(tc/tp-1):+.1f} %)",
     "pooled flagged rows over 3 pairs (note: not a rate -- no denominator needed, but do "
     "not divide this by the domain size of ONE pair)")
-row("severe tier inflation removed",
-    "severe tier (d > 0.30 for 30 min), pooled",
+row("severity depth retained in the score",
+    "published severe tier vs the like-for-like corrected rule (d > 0.30, k = 6)",
     f"{sp:,.1f} h -> {sc:,.1f} h  = {sp/sc:.2f}x",
-    "same pooling")
+    "AUDIT-ONLY comparison documenting a defect in the published baseline. The canonical "
+    "artefact no longer exports a severe column; it is reproducible via bench.det_severe.")
 
 # =========================================================================== #
 print()

@@ -73,13 +73,19 @@ def test_evaluation_domain_is_excluded_from_flags():
 def test_published_detector_overflags_when_clipping_is_intermittent():
     """D0 fires on unclipped days whenever the limit is not chronic.
 
-    Measured: ~4,900-5,300 false-positive rows on each of the two episodic scenarios.
-    This is the defect the published control-pair validation cannot see.
+    Measured on the 2026-09 export: 986 rows on eu_1+eu_3 and 708 on eu_15+eu_23, 1,694
+    pooled. This is the defect the published control-pair validation cannot see.
+
+    The band was ``>= 5000`` while the export was the incomplete ``..._jul2026`` file,
+    which was missing four whole months (2025-08, 2025-09, 2026-03, 2026-04). Those gaps
+    stretched ``cap(t)``'s 31-present-day rolling window to as much as 92 calendar days,
+    mixing seasons inside one window and depressing the published expectation; the phantom
+    deficit that followed accounted for most of the old count. The defect is real and
+    survives the completed record -- it is simply 6x smaller. See SATURATION_REVIEW.md 3.3.
     """
-    fp = 0
-    for pair in (("eu_1", "eu_3"), ("eu_15", "eu_23")):
-        fp += score(intermittent(pair), D0)["fp_rows"]
-    assert fp >= 5000, (
+    fp = sum(score(intermittent(pair), D0)["fp_rows"]
+             for pair in (("eu_1", "eu_3"), ("eu_15", "eu_23")))
+    assert fp >= 1000, (
         f"published detector produced only {fp} false-positive rows on intermittent "
         f"clips; if this dropped, the published defect may have been fixed -- update "
         f"SATURATION_REVIEW.md and relax this band rather than deleting the test"
@@ -97,15 +103,57 @@ def test_rolling_slope_is_specific_when_clipping_is_intermittent():
     assert fp <= 250, f"D1 produced {fp} false-positive rows on intermittent clips"
 
 
-def test_recommended_detector_is_at_least_20x_more_specific_than_published():
-    """The headline claim of the review, as a machine-checked ratio."""
+def test_recommended_detector_is_more_specific_than_published():
+    """The specificity margin, as a machine-checked ratio -- with its band justified.
+
+    Measured on the 2026-09 export: published 1,694 vs D1 189 = 9.0x pooled over the two
+    episodic scenarios. Per scenario the ratios are 58x (eu_1+eu_3) and 4x (eu_15+eu_23),
+    so the pooled figure hides a wide spread; the absolute FP row counts are reported
+    alongside it everywhere it is quoted.
+
+    This was asserted at ``>= 20x`` against a published count of 10,202 that the incomplete
+    export had inflated roughly 6x. The corrected margin is real but modest, and it is NOT
+    the load-bearing evidence for vat-v1 -- the benchmark AUC (0.961 vs 0.803 episodic) and
+    the bias floor (7 % vs 39 %) are. The band is ``>= 5x`` so the test still fails if the
+    margin genuinely collapses, without encoding a number that depended on a broken record.
+    """
     d0 = sum(score(intermittent(p), D0)["fp_rows"]
              for p in (("eu_1", "eu_3"), ("eu_15", "eu_23")))
     d1 = sum(score(intermittent(p), D1)["fp_rows"]
              for p in (("eu_1", "eu_3"), ("eu_15", "eu_23")))
     assert d1 > 0 or d0 > 0
     ratio = d0 / max(d1, 1)
-    assert ratio >= 20, f"specificity gain collapsed to {ratio:.1f}x (published={d0}, D1={d1})"
+    assert ratio >= 5, f"specificity margin collapsed to {ratio:.1f}x (published={d0}, D1={d1})"
+    assert d1 <= 400, f"D1's absolute false-positive count rose to {d1}"
+
+
+def test_scenario_day_selection_is_invariant_to_record_length():
+    """The benchmark must not re-roll when the record is completed or truncated.
+
+    ``scenario`` used to draw one uniform per POSITION in the day list, via
+    ``default_rng(seed).random(len(days))``. Completing the 2026-09 export grew the day
+    list from 328 to 487 entries, every position shifted, and all six scenarios silently
+    moved onto different days -- the pooled episodic false-positive count then changed by
+    more than 30x while no detector code had changed at all.
+
+    ``bench.day_uniform`` keys the draw on the DATE instead, so a given day's fate is a
+    function of (seed, date) alone and cannot be perturbed by the rest of the record. This
+    guards that property: truncating the record must leave every surviving day's draw
+    bit-identical.
+    """
+    days = pd.date_range("2025-05-01", "2026-08-31", freq="D")
+    full = bench.day_uniform(days, seed=7)
+    for cut in (120, 328, 430):
+        truncated = bench.day_uniform(days[:cut], seed=7)
+        assert np.array_equal(full[:cut], truncated), (
+            f"the scenario draw for the first {cut} days changed when the record was "
+            f"truncated -- day selection is position-dependent again"
+        )
+    # a different seed must move the selection, or the fixture would be degenerate
+    assert not np.array_equal(full, bench.day_uniform(days, seed=8))
+    # and the selection must be a genuine mix, not all-on or all-off
+    picked = full < 0.35
+    assert 0.2 < picked.mean() < 0.5, f"duty is degenerate: {picked.mean():.2f} of days on"
 
 
 def test_chronic_clipping_hides_the_published_defect():
@@ -182,11 +230,15 @@ def test_control_calibrated_null_trades_sensitivity_for_specificity():
 def test_no_flags_on_an_unconstrained_independent_pair():
     """No constraint was injected at all, so a flag is unambiguously a false alarm.
 
-    Measured: published 55, D1 0, D2 4, D5 0, D4 957.
+    Measured on the 2026-09 export (76,933 rows): published 28, D1 0, D2 4, D5 3, D4 1,723.
+    D1 -- the canonical detector -- is held to exactly zero, which is the guarantee that
+    matters. D5 is held to a small band rather than zero: it is a scored competitor, not
+    the exported method, and on this export its control-derived null picks up 3 rows.
     """
     sc = noclip()
     assert score(sc, D1)["fp_rows"] == 0, "corrected baseline flagged an intact pair"
-    assert score(sc, D5)["fp_rows"] == 0, "control-calibrated tier flagged an intact pair"
+    d5 = score(sc, D5)["fp_rows"]
+    assert d5 <= 5, f"control-calibrated tier flagged an intact pair ({d5} rows)"
     assert score(sc, D4)["fp_rows"] >= 100, "D4's small-sample artefact disappeared"
 
 

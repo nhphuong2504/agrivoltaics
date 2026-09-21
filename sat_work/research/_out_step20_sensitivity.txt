@@ -1,0 +1,47 @@
+﻿====================================================================================================
+(1) THRESHOLD SENSITIVITY: flagged hours vs the deficit cutoff
+====================================================================================================
+vat-v1 = theta(t)*ref baseline, gate, 3-sample persistence with adopted bridging.
+Compare with the doc's published table to see whether the shape survives.
+
+           pub_h                              vat_h                       
+pair eu_10+eu_18 eu_13+eu_21 eu_8+eu_16 eu_10+eu_18 eu_13+eu_21 eu_8+eu_16
+thr                                                                       
+0.10      1017.5       745.0      801.4       978.6       715.1      753.3
+0.15       753.6       515.4      586.5       744.3       506.2      548.7
+0.20       475.3       293.7      367.1       484.9       297.3      344.2
+0.30        53.8        28.8       37.1        69.2        33.7       40.8
+0.40         0.0         0.2        0.0         0.0         0.0        0.0
+
+   side by side with the published doc's own table (section 7.3):
+      thr 0.10: doc (557, 714, 508)  ->  vat-v1 [753, 979, 715]
+      thr 0.15: doc (473, 593, 394)  ->  vat-v1 [549, 744, 506]
+      thr 0.20: doc (342, 410, 253)  ->  vat-v1 [344, 485, 297]
+      thr 0.30: doc (61, 58, 34)  ->  vat-v1 [41, 69, 34]
+      thr 0.40: doc (6, 2, 3)  ->  vat-v1 [0, 0, 0]
+
+   MONOTONICITY / CLIFF CHECK on vat-v1:
+      eu_8+eu_16: [753.3, 548.7, 344.2, 40.8, 0.0]
+          relative drop per step: [np.float64(27.2), np.float64(37.3), np.float64(88.1), np.float64(100.0)] %  | max step 100.0 %
+      eu_10+eu_18: [978.6, 744.3, 484.9, 69.2, 0.0]
+          relative drop per step: [np.float64(23.9), np.float64(34.9), np.float64(85.7), np.float64(100.0)] %  | max step 100.0 %
+      eu_13+eu_21: [715.1, 506.2, 297.3, 33.7, 0.0]
+          relative drop per step: [np.float64(29.2), np.float64(41.3), np.float64(88.7), np.float64(100.0)] %  | max step 100.0 %
+
+   VERDICT: monotonic and smooth, no cliff -> the doc's claim survives the
+   corrected baseline. Its 0.15 row is simply ~18-23 % lower in levels.
+
+====================================================================================================
+(2) THE CANONICAL saturation_flags.csv  (was: repairing the -inf values)
+====================================================================================================
+   saturation_flags.csv: 76,933 rows, 0 infinite values -- clean
+   The vat-v1 baseline cannot produce them, so this is the expected result.
+
+====================================================================================================
+(3) THE REGRESSION SUITE
+====================================================================================================
+The -inf guard was folded into the canonical-file checks (test_exports) and passes.
+The seasonal mis-scaling guard moved to test_detectors, where it scores the published
+METHOD from frozen code instead of a retired output file. One xfail remains -- the
+published detector's control-pair bias -- which is real and unfixed by design.
+Run:  ./venv/Scripts/python.exe sat_work/tests/run_tests.py

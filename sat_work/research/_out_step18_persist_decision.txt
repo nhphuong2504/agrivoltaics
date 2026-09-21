@@ -1,0 +1,54 @@
+﻿====================================================================================================
+A. GROUND TRUTH - 6 injected scenarios (3 independent pairs, chronic + episodic)
+====================================================================================================
+                variant    tp  fp    fn    rec   prec  d_rec_pp   fp_x
+                 strict 20505 166 46728 0.3050 0.9920    0.0000 1.0000
+            bridged g=1 23543 296 43690 0.3502 0.9876    4.5186 1.7831
+ bridged g=1 guard=0.03 23264 232 43969 0.3460 0.9901    4.1036 1.3976
+ bridged g=1 guard=0.05 23086 212 44147 0.3434 0.9909    3.8389 1.2771
+bridged g=1 guard=0.075 22735 195 44498 0.3382 0.9915    3.3168 1.1747
+  bridged g=1 guard=0.1 22324 184 44909 0.3320 0.9918    2.7055 1.1084
+
+   The question is whether any guarded variant matches 'bridged' on recall while
+   staying near 'strict' on false positives. Pareto check (recall up, FP down):
+                variant    rec  fp   prec  dominated
+                 strict 0.3050 166 0.9920      False
+            bridged g=1 0.3502 296 0.9876      False
+ bridged g=1 guard=0.03 0.3460 232 0.9901      False
+ bridged g=1 guard=0.05 0.3434 212 0.9909      False
+bridged g=1 guard=0.075 0.3382 195 0.9915      False
+  bridged g=1 guard=0.1 0.3320 184 0.9918      False
+
+   Pareto frontier: ['strict', 'bridged g=1', 'bridged g=1 guard=0.03', 'bridged g=1 guard=0.05', 'bridged g=1 guard=0.075', 'bridged g=1 guard=0.1']
+
+====================================================================================================
+B. REAL FLEET - hours claimed, and control-pair rows (every one a false alarm)
+====================================================================================================
+Controls are split by class: cross-inverter (a provably clean null) and the two
+same-inverter pairs, which carry a co-movement common mode (see step17).
+
+                variant  shared_h  cross_inv_fp  same_inv_fp  eu_8+eu_16  eu_10+eu_18  eu_13+eu_21  d_hours_pct
+                 strict    1684.2             0          161       514.0        696.2        474.1          0.0
+            bridged g=1    1799.2             0          161       548.7        744.3        506.2          6.8
+ bridged g=1 guard=0.03    1798.2             0          161       548.6        743.4        506.2          6.8
+ bridged g=1 guard=0.05    1796.8             0          161       548.3        742.7        505.8          6.7
+bridged g=1 guard=0.075    1791.3             0          161       546.1        741.7        503.6          6.4
+  bridged g=1 guard=0.1    1779.4             0          161       542.5        737.1        499.8          5.7
+
+====================================================================================================
+C. VERDICT
+====================================================================================================
+   strict        : recall 0.3050, FP 166
+   bridged       : recall 0.3502, FP 296   (+4.5 pp recall, 1.78x FP)
+   bridged g=1 guard=0.03: recall 0.3460, FP 232   (+4.1 pp recall, 1.40x FP)
+   bridged g=1 guard=0.05: recall 0.3434, FP 212   (+3.8 pp recall, 1.28x FP)
+   bridged g=1 guard=0.075: recall 0.3382, FP 195   (+3.3 pp recall, 1.17x FP)
+   bridged g=1 guard=0.1 : recall 0.3320, FP 184   (+2.7 pp recall, 1.11x FP)
+
+   Real-data cost of the cross-inverter null (must stay 0):
+      OK  strict                 cross-inv FP   0   same-inv FP 161   hours  1684.2 (+0.0%)
+      OK  bridged g=1            cross-inv FP   0   same-inv FP 161   hours  1799.2 (+6.8%)
+      OK  bridged g=1 guard=0.03 cross-inv FP   0   same-inv FP 161   hours  1798.2 (+6.8%)
+      OK  bridged g=1 guard=0.05 cross-inv FP   0   same-inv FP 161   hours  1796.8 (+6.7%)
+      OK  bridged g=1 guard=0.075 cross-inv FP   0   same-inv FP 161   hours  1791.3 (+6.4%)
+      OK  bridged g=1 guard=0.1  cross-inv FP   0   same-inv FP 161   hours  1779.4 (+5.7%)

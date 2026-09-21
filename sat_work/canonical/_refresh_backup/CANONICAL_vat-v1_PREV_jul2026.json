@@ -1,11 +1,11 @@
 {
   "artefact": {
-    "columns": 9,
+    "columns": 21,
     "deficit_values_outside_domain": 0,
     "infinities": 0,
     "path": "saturation_flags.csv",
-    "rows": 76933,
-    "sha256": "16db6510f59fa3c10a57ee765a158e96836ff80000f17b41ea0aea422a1fc1cc",
+    "rows": 51005,
+    "sha256": "a222e9ca15fde39e2f96c75691c105aa7d750c1287bcd3f054cebf6a94d88068",
     "tracked": false,
     "tracked_reason": "generated product, gitignored by *.csv; rebuild with sat_work/research/recommended.py"
   },
@@ -17,7 +17,7 @@
     "flagged_rows": "pooled over the three shared MPPT pairs",
     "hours": "flagged rows / 12 (verified modal 5-min grid; sampled hours, not wall-clock, because acquisition gaps contribute no rows)"
   },
-  "generated": "2026-09-16",
+  "generated": "2026-09-14",
   "method": {
     "baseline": "rolling median of s/ref over a 31-day centred window",
     "deficit_threshold": 0.15,
@@ -48,73 +48,73 @@
   },
   "metrics": {
     "benchmark": {
-      "episodic_auc_canonical": 0.961,
-      "episodic_auc_published": 0.803,
-      "episodic_fp_canonical": 189,
-      "episodic_fp_published": 1694,
-      "specificity_gain_x": 9
+      "episodic_auc_canonical": 0.962,
+      "episodic_auc_published": 0.78,
+      "episodic_fp_canonical": 117,
+      "episodic_fp_published": 10202,
+      "specificity_gain_x": 87
     },
     "controls": {
       "eu_15_eu_23": {
-        "canonical": 161,
-        "published": 126
+        "canonical": 108,
+        "published": 106
       },
       "eu_1_eu_3": {
         "canonical": 0,
-        "published": 9
+        "published": 16
       },
       "eu_4_eu_12": {
         "canonical": 0,
-        "published": 23
+        "published": 0
       }
     },
     "deficit_in_domain_range": {
       "eu_10_eu_18": [
-        -0.1438,
+        -0.1406,
         1.0
       ],
       "eu_13_eu_21": [
-        -0.08,
+        -0.0285,
         1.0
       ],
       "eu_8_eu_16": [
-        -0.0337,
+        -0.0151,
         1.0
       ]
     },
     "domain_rows": {
-      "eu_10_eu_18": 19080,
-      "eu_13_eu_21": 14650,
-      "eu_8_eu_16": 15188
+      "eu_10_eu_18": 11635,
+      "eu_13_eu_21": 8160,
+      "eu_8_eu_16": 8640
     },
     "energy": {
       "bias_floor_canonical_pct": 7,
-      "bias_floor_published_pct": 39,
-      "control_canonical_kwh": 661,
-      "control_published_kwh": 3923,
-      "shared_canonical_kwh": 9249,
-      "shared_published_kwh": 10103
+      "bias_floor_published_pct": 47,
+      "control_canonical_kwh": 409,
+      "control_published_kwh": 3356,
+      "shared_canonical_kwh": 6120,
+      "shared_published_kwh": 7131
     },
     "flagged": {
-      "canonical_hours": 1799.2,
-      "canonical_rows": 21591,
+      "canonical_hours": 1269.2,
+      "canonical_rows": 15230,
       "per_pair": {
         "eu_10_eu_18": {
-          "canonical_rows": 8932,
-          "published_rows": 9243
+          "canonical_rows": 6478,
+          "published_rows": 7111
         },
         "eu_13_eu_21": {
-          "canonical_rows": 6075,
-          "published_rows": 6277
+          "canonical_rows": 4113,
+          "published_rows": 4728
         },
         "eu_8_eu_16": {
-          "canonical_rows": 6584,
-          "published_rows": 7223
+          "canonical_rows": 4639,
+          "published_rows": 5680
         }
       },
-      "published_hours": 1895.2,
-      "published_rows": 22743,
-      "row_change_pct": -5.1
+      "published_hours": 1459.9,
+      "published_rows": 17519,
+      "row_change_pct": -13.1
     }
   },
   "version": "vat-v1"

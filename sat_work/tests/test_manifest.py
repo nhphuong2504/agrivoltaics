@@ -36,6 +36,32 @@ def test_manifest_exists_and_names_the_live_artefact():
     assert os.path.abspath(CANONICAL_CSV) == os.path.abspath(CM.CANONICAL_CSV)
 
 
+def test_manifest_artefact_descriptor_matches_the_live_file():
+    """The artefact block must describe the file on disk.
+
+    `columns` was a hardcoded ``21``, left over from the retired six-columns-per-pair
+    schema, and it misdescribed a 9-column artefact for two revisions. The `rows` field was
+    guarded by the test above; the rest of the descriptor was not guarded by anything, so
+    the wrong number sat in a committed lock with a suite full of green ticks. Every field
+    here is version-independent, which is why they can be pinned.
+
+    The sha256 is deliberately NOT asserted in this suite -- a byte hash depends on the
+    pandas version that wrote the CSV, so it is provenance rather than contract, and
+    `step24_canonical_manifest.py --check` verifies it instead.
+    """
+    m = _locked()["artefact"]
+    can = CM.load_canonical()
+    assert m["rows"] == len(can), f"locked rows {m['rows']} != live {len(can)}"
+    assert m["columns"] == len(can.columns), (
+        f"locked columns {m['columns']} != live {len(can.columns)}"
+    )
+    num = can.select_dtypes("number")
+    live_inf = int((num == float("inf")).sum().sum() + (num == float("-inf")).sum().sum())
+    assert m["infinities"] == live_inf, (
+        f"locked infinities {m['infinities']} != live {live_inf}"
+    )
+
+
 def test_live_artefact_still_matches_the_locked_headline_metrics():
     """The substance of the lock: every headline number, re-derived from the live file.
 
@@ -63,11 +89,16 @@ def test_locked_method_configuration_matches_the_code():
     assert m["method"] == CM.method(), "bench.py parameters no longer match the lock"
     # and spot-check the values that define the frozen method
     assert m["method"]["ref_on"] == bench.REF_ON == 0.70
-    assert m["method"]["deficit_threshold_moderate"] == bench.THR_MOD == 0.15
-    assert m["method"]["deficit_threshold_severe"] == bench.THR_SEV == 0.30
-    assert m["method"]["persistence_bridging_samples"] == bench.PERS_GAP
-    assert m["method"]["persistence_bridging_samples_severe"] == bench.PERS_GAP_SEV
+    assert m["method"]["deficit_threshold"] == bench.THR_MOD == 0.15
+    assert m["method"]["persistence_samples"] == bench.PERS_MOD == 3
+    assert m["method"]["persistence_bridging_samples"] == bench.PERS_GAP == 1
     assert m["method"]["excluded_units"] == ["eu_7"]
+    # the retired severe tier must not linger in the lock: a single-flag artefact whose
+    # manifest still advertised a second threshold would misdescribe the code
+    for stale in ("deficit_threshold_severe", "persistence_severe_samples",
+                  "deficit_threshold_moderate", "persistence_moderate_samples",
+                  "persistence_bridging_samples_severe", "null_bins", "null_calibration"):
+        assert stale not in m["method"], f"retired key {stale} is still locked"
 
 
 def test_manifest_defines_its_denominators():

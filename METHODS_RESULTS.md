@@ -2,11 +2,10 @@
 
 ## Finding
 
-Three of the ten MPPT channels in the Area-1 array are **saturated**: the two units on each
-channel together stop producing what the available irradiance would allow, and the shortfall is
-lost energy. The constraint is at the tracker, not the inverter. Over the record the three
-affected pairs show **1,269.2 sampled hours** at a moderate deficit and **27.3 hours** at a
-severe one.
+Three of the twenty-one MPPT channels in the Area-1 array are **saturated**: the two units on
+each channel together stop producing what the available irradiance would allow, and the
+shortfall is lost energy. The constraint is at the tracker, not the inverter. Over the record
+the three affected pairs show **1,799.2 sampled hours** of saturation.
 
 The detector that establishes this is referred to throughout as **`vat-v1`**. It models each
 pair's saturation-free output as a *time-varying slope* against an irradiance proxy, and calls
@@ -15,10 +14,10 @@ is frozen: no parameter was tuned to any number reported here, and the detector'
 parameter turns out to reproduce the documented **9.0 kW** string rating to within a few
 percent without having been fitted to it.
 
-The finding is supported by four validations that share no failure mode — a normalisation-free
-peer comparison on real data, a natural experiment provided by the inverter topology, a
-cross-check against a hardware specification, and a clip-injection benchmark with labelled
-ground truth.
+The finding is supported by five validations that share no failure mode — a normalisation-free
+peer comparison and a per-unit score on real data, a natural experiment provided by the inverter
+topology, a cross-check against a hardware specification, and a clip-injection benchmark with
+labelled ground truth.
 
 ![MPPT saturation: the constraint is real, it is at the tracker, and the detector that finds
 it is validated](sat_work/research/methods_fig4_evidence.png)
@@ -35,9 +34,9 @@ tracker; panel (d) scores the detector that finds it.*
 ### 1.1 Site, instrumentation and record
 
 Twenty-four experimental units (`eu_1` … `eu_24`) log DC power at 5-minute resolution. The
-record spans **2025-05-01 06:15 to 2026-07-25 21:10 — 450 days, 51,005 rows, 21 columns**. The
-5-minute grid is modal on 50,561 of 51,004 consecutive steps (99.1 %); the remainder are
-acquisition gaps, which contribute no rows.
+record spans **2025-05-01 06:15 to 2026-08-31 21:10 — 488 days, 76,933 rows, 25 columns**. The
+5-minute grid is modal on 99.2 % of consecutive steps, and all but one of the 488 calendar dates
+carry data.
 
 All figures reported in units of hours are **sampled hours**, i.e. `rows / 12`. They are hours
 present in the record, not wall-clock hours elapsed. Where a denominator matters it is stated
@@ -66,8 +65,9 @@ proxy is bit-identical (`test_topology.py`).
 
 ### 1.2 Data-quality screening
 
-Five conditions are evaluated per unit and per timestamp, and **any** of them renders a
-timestamp ineligible for detection:
+Four conditions are evaluated per unit and per timestamp, and **any** of them makes that
+timestamp ineligible for detection. A fifth screen, the activity mask, is evaluated per unit
+per day and enters the decision domain rather than the data-quality screen:
 
 | flag | criterion | rows in this record |
 |---|---|---|
@@ -153,8 +153,8 @@ ceiling to bind, and `s > 0.6·expected` excludes the low-power rows where `θ·
 numerically meaningless.
 
 The **decision domain** is the set over which every rate in §2 is computed, and it is the same
-expression the benchmark's AUC is computed over. It contains **8,160–11,635 rows per pair, or
-16–23 % of the record**. The `deficit` column of the released artefact is `NaN` outside it, so
+expression the benchmark's AUC is computed over. It contains **14,650–19,080 rows per pair, or
+19–25 % of the record**. The `deficit` column of the released artefact is `NaN` outside it, so
 an unfiltered `.mean()` over that column *is* the in-domain mean. Inside the domain the column
 is bounded to `[-1, 1]` by construction.
 
@@ -172,30 +172,39 @@ q_n(\text{ref}) \;=\; \text{99.5th percentile of } d
 bins spanning `ref ∈ [0.30, 1.05]` (21 edges), computed per bin. The control pairs have no
 shared tracker, so any non-zero `d` they show is model error by construction, and `q_n` is an
 assumption-light empirical quantile of that error. It inherits whatever error the model has,
-trading sensitivity for specificity rather than removing the error — which is why it defines a
-*conservative* tier, not the primary one. §2.7 measures how small that error actually is.
+trading sensitivity for specificity rather than removing the error — which is why it defines an
+*alternative calibration*, not the adopted one. It is scored as a competing detector in §2.5 but
+is **not** exported, and §2.7 measures how small that error actually is.
 
-### 1.7 Decision rules and persistence
+### 1.7 Decision rule and persistence
 
 Saturation is a sustained condition, so a transient threshold crossing must not raise a flag.
-Three tiers are exported, all inside the gate:
+A pair is reported **saturated** when `d > 0.15` holds for **3 consecutive samples (15 min)**,
+inside the gate. That is the only decision the method makes, and the only flag exported.
 
-| tier | rule | persistence | gap bridging |
-|---|---|---|---|
-| **moderate** | `d > 0.15` | 3 consecutive samples (15 min) | 1-sample gaps bridged **within the gate** |
-| **severe** | `d > 0.30` | 6 consecutive samples (30 min) | none (strict) |
-| **conservative** | `d > q_n(ref)` | 3 consecutive samples (15 min) | 1-sample gaps bridged within the gate |
+| column | kind | definition |
+|---|---|---|
+| `deficit` | score | `d`, bounded to `[-1, 1]`, NaN outside the decision domain |
+| `sat` | flag | `d > 0.15` for 3 consecutive samples (15 min) |
 
 Gap bridging fills a single missing sample between two qualifying runs, but only where the
 sample lies inside the gate — a fill can never place a flag on a row the physical gate would
-have excluded. It is adopted for a measured reason: it recovers **+5.0 pp recall** on injected
-ground truth (0.349 → 0.399) and **+5.3 % of flagged hours** on real data, with control-pair
+have excluded. It is adopted for a measured reason: it recovers **+4.5 pp recall** on injected
+ground truth (0.305 → 0.350) and **+6.8 % of flagged hours** on real data, with control-pair
 counts *unchanged* (§2.6). It is not free, and §2.10 states the cost.
 
-Bridging is deliberately **not** applied to the severe tier. The benchmark's injected severity
-caps at ≈0.25 (§1.8), so it produces zero true positives for a `d > 0.30` tier and cannot
-adjudicate the rule there; the analogous change would inflate that tier roughly 3× on the
-strength of an untested analogy. Severe therefore stays strict until ground truth exists for it.
+**No severity tier is exported.** Severity is carried by the continuous `deficit` column, not by
+additional flags: any stricter cut is a threshold on the score the artefact already publishes.
+A tier is not only a threshold, though — it also has to re-decide persistence, and that is what
+makes a second tier redundant rather than merely inconvenient. A bare `d > 0.30` cut over the
+in-domain rows selects **3,829** samples, **1,423** of which the flag rejects as isolated spikes;
+as a decision it is therefore *looser* than the reported flag unless it re-implements the full
+run-length rule, at which point it is the same method with a different constant. Of the rows the
+flag does set, `8.8–13.0 %` exceed a 30 % deficit, and the deepest deficit reached on any flagged
+row is `0.40` on all three pairs — the shortfall saturates at about 40 % rather than approaching
+the 100 % a total loss would give, which is the signature of a power-limited tracker rather than
+a failed unit. One exported decision and one continuous score keep the decision, and its
+denominator, unambiguous.
 
 ### 1.8 Validation design
 
@@ -249,12 +258,12 @@ sweep** (§2.8).
 
 ### 1.9 Reproducibility, version lock and regression tests
 
-The method's output is the repo-root `saturation_flags.csv`: **51,005 × 21**, one row per
-5-minute timestamp, carrying, per pair, the continuous `deficit`, the three flag tiers, and the
-supporting columns `excess_vs_controls` and `null_d`.
+The method's output is the repo-root `saturation_flags.csv`: **76,933 × 9**, one row per
+5-minute timestamp, carrying the shared irradiance proxy, the site-outage flag, and per pair
+exactly two columns — the continuous `deficit` and the single binary `sat` flag.
 
 * **Regeneration is byte-deterministic.** Two consecutive runs from `recommended.py` produce
-  the same file, sha256 `19e9f5467a5a72dd403a9ddf47d754dff07250106cecb01bcdb9f65623593203`.
+  the same file, sha256 `16db6510f59fa3c10a57ee765a158e96836ff80000f17b41ea0aea422a1fc1cc`.
 * The CSV is git-ignored, so reproducibility is locked by a **committed manifest**,
   `sat_work/canonical/CANONICAL_vat-v1.json`, recording the method parameters, every headline
   metric with its denominator, and the artefact's sha256. `step24_canonical_manifest.py --check`
@@ -282,29 +291,31 @@ This validation removes that possibility.
 *Fig 1. Median normalised pair-output ratio against a peer pair, in `ref` bins, rescaled to 1
 in `ref ∈ [0.35, 0.60]`. No `θ`, no fitted parameter, and no `ref` in the denominator.*
 
-Shared pairs sit at **1.000 against peers in the mid band** and fall monotonically across the
-whole high-irradiance half of the range, reaching **0.575–0.579 in the topmost bin**, while
-control pairs are flat (**0.986–1.022**) across the entire range. Three different peer
-references give the same curve. Taking the median ratio directly over every sample with
+Shared pairs sit at **1.000 against peers in the mid band** and fall across the whole
+high-irradiance half of the range, reaching **0.572–0.594 in the topmost bin** with roughly
+half of the total fall above `ref ≈ 0.88`, while control pairs are flat (**0.991–1.020**)
+across the entire range. Repeating the test against three different peer references moves the
+shared-pair figures only between **0.840 and 0.896**, so no single choice of peer drives the
+result. Taking the median ratio directly over every sample with
 `ref ≥ 0.70` (no binning, so no bin-width choice enters):
 
 | pair | median ratio at `ref ≥ 0.7` | vs peers | n |
 |---|---|---|---|
-| `eu_8+eu_16` | 0.794 | **20.6 % below** | 11,653 |
-| `eu_10+eu_18` | 0.830 | **17.0 % below** | 11,653 |
-| `eu_13+eu_21` | 0.829 | **17.1 % below** | 11,653 |
-| control `eu_1+eu_3` | 0.988 | 1.2 % below | 11,652 |
-| control `eu_4+eu_12` | 1.012 | 1.2 % above | 11,653 |
-| control `eu_15+eu_23` | 0.999 | 0.1 % below | 11,653 |
+| `eu_8+eu_16` | 0.863 | **13.7 % below** | 15,247 |
+| `eu_10+eu_18` | 0.851 | **14.9 % below** | 19,080 |
+| `eu_13+eu_21` | 0.896 | **10.4 % below** | 14,650 |
+| control `eu_1+eu_3` | 0.993 | 0.7 % below | 15,247 |
+| control `eu_4+eu_12` | 1.007 | 0.7 % above | 19,080 |
+| control `eu_15+eu_23` | 1.000 | 0.0 % | 14,650 |
 
 **The per-unit test** confirms the same effect with a different statistic and no pair sums at
 all. Scoring each of the 24 units individually at `ref ≥ 0.75`:
 
 | group | high-irradiance deficit |
 |---|---|
-| the six units in shared pairs | **+0.169 to +0.200** |
-| the other 18 units | **−0.005 to +0.011** |
-| `eu_7` (faulty, excluded) | −0.227, with `θ_mid` = 38.6 W |
+| the six units in shared pairs | **+0.152 to +0.184** |
+| the other 18 units | **−0.005 to +0.010** |
+| `eu_7` (faulty, excluded) | −0.232 |
 
 The six highest-scoring units in the fleet are *exactly* the six inside shared pairs, and the
 next-best unit is 15× lower. This validates the shared/independent labelling the whole analysis
@@ -326,16 +337,16 @@ Averaged over the gate (`ref ≥ 0.70`):
 
 | class | detector | model-free truth | residual | largest single-bin gap |
 |---|---|---|---|---|
-| shared pairs | **+0.239** | +0.225 | **+0.0138** | 0.032 |
-| control pairs | +0.004 | −0.000 | +0.0044 | 0.012 |
+| shared pairs | **+0.230** | +0.215 | **+0.0142** | 0.023 |
+| control pairs | +0.005 | −0.000 | +0.0050 | 0.010 |
 
 Two things follow. On the pairs that cannot clip the model reports essentially nothing
-(+0.004 against a truth of −0.000), so the deficit it reports elsewhere is not a coupling
+(+0.005 against a truth of −0.000), so the deficit it reports elsewhere is not a coupling
 artefact. And on the pairs that do clip it tracks the independent measurement to within 0.014
 on average, so the *magnitude* is right, not just the sign.
 
-**There is no seasonal residual.** In the low-sun month (December, `ref ≥ 0.5`, n = 285) the
-control-pair median deficit is −0.005, −0.001 and +0.004; in June it is +0.005, +0.002 and
+**There is no seasonal residual.** In the low-sun month (December, `ref ≥ 0.5`) the
+control-pair median deficit is −0.005, −0.001 and +0.002; in June it is +0.005, +0.002 and
 +0.007. Every value is inside ±0.007, so the model does not manufacture a deficit when the
 resource is low — the failure mode a level-tracking slope is specifically chosen to avoid
 (§1.4).
@@ -347,11 +358,11 @@ high-irradiance deficit for those mates isolates where the limit lives:
 
 | inverter | saturating pair | pair deficit | inverter mates | mates' deficit | gap |
 |---|---|---|---|---|---|
-| 6 | `eu_8+eu_16` | +0.195 | `eu_24` | −0.001 | **+0.196** |
-| 2 | `eu_10+eu_18` | +0.196 | `eu_2`, `eu_3`, `eu_11`, `eu_19` | +0.002 | **+0.195** |
-| 4 | `eu_13+eu_21` | +0.178 | `eu_5`, `eu_6`, `eu_14`, `eu_22` | +0.002 | **+0.175** |
+| 6 | `eu_8+eu_16` | +0.176 | `eu_24` | +0.000 | **+0.176** |
+| 2 | `eu_10+eu_18` | +0.181 | `eu_2`, `eu_3`, `eu_11`, `eu_19` | −0.001 | **+0.182** |
+| 4 | `eu_13+eu_21` | +0.160 | `eu_5`, `eu_6`, `eu_14`, `eu_22` | +0.001 | **+0.159** |
 
-The clipped pairs roll off by 18–20 %; their inverter mates — which share AC cabling, the
+The clipped pairs roll off by 16–18 %; their inverter mates — which share AC cabling, the
 inverter's DC bus and any grid-side limit — roll off by ~0 %. A shared AC or inverter-level
 constraint would have to appear in both. **The constraint is at the MPPT channel**, which is
 the mechanism the detector is designed to find, and this is the strongest causal evidence in
@@ -364,10 +375,10 @@ the 23 healthy units:
 
 | statistic | value |
 |---|---|
-| median `θ` | **8,847 W** |
-| median `θ` / nameplate | **0.983** |
+| median `θ` | **8,787 W** |
+| median `θ` / nameplate | **0.976** |
 | sd of the ratio | 0.017 |
-| maximum deviation from 9.0 kW | **4.1 %** |
+| maximum deviation from 9.0 kW | **4.8 %** |
 
 Nothing in the method was fitted to 9.0 kW: `θ` is estimated from mid-band irradiance, and the
 nameplate entered the analysis only after the detector was frozen. The detector's central
@@ -389,18 +400,17 @@ scenario has no positives by construction and is excluded from the mean rather t
 
 | candidate | episodic | any clip | mean FP rows |
 |---|---|---|---|
-| **θ(t)·ref  (adopted)** | **0.962** | 0.934 | **30** |
-| clear-sky θ₉₀(t) | 0.957 | 0.932 | 45 |
-| control-null calibrated | 0.957 | **0.936** | 53 |
-| ceiling-pinned | 0.493 | 0.797 | 785 |
+| **θ(t)·ref  (adopted)** | **0.961** | **0.933** | **49** |
+| clear-sky θ₉₀(t) | 0.957 | 0.930 | 70 |
+| control-null calibrated | 0.942 | 0.887 | 52 |
+| ceiling-pinned | 0.515 | 0.806 | 1,641 |
 
-On the realistic episodic regime the adopted detector reaches **0.962** against a chance level
-of 0.5, and it also leads on deep clips and on false positives. The honest reading is
-narrower than "it dominates": the clear-sky envelope and the control-null variants are close
-peers (0.957 each), and the control-null variant edges the adopted one on the pooled any-clip
-column, where its score is a different quantity (excess over the control null, rather than a
-shortfall). **The adopted detector leads where it matters** — the intermittent regime, the deep
-clips and the false-alarm count — and is not uniquely best at everything.
+On the realistic episodic regime the adopted detector reaches **0.961** against a chance level
+of 0.5, and it leads on every column. The margin over the clear-sky envelope is small — **0.961
+against 0.957** — and the two should be read as equivalent on discrimination; what separates
+them is the false-alarm count, **49 rows against 70**. The control-null variant, whose score is
+a different quantity (excess over the control null rather than a shortfall against an
+expectation), trails at 0.942.
 
 Two negative results are recorded so they are not rediscovered, and one of them is a genuine
 trade-off rather than a defeat.
@@ -409,10 +419,11 @@ A ref-gated 2-state HMM fails for a physical reason: cloud dips and clips are bo
 utilisation" states, so it cannot separate them (AUC ≈0.48).
 
 A **ceiling-pinned** detector — flag when output sits on a plateau while the resource is high —
-is the mirror image of the adopted one. On the benchmark's chronic scenarios it is perfect
-(**AUC 1.000**, 1–3 false-positive rows), beating the adopted detector's 0.889. On the two
-episodic scenarios it collapses to **0.487 and 0.500** with **1,815 and 1,932** false-positive
-rows. It is not a weak detector; it is a detector that requires the constraint to be present
+is the mirror image of the adopted one. On the benchmark's chronic scenarios it is near-perfect
+(**AUC 1.000 and 0.999**, 8 and 5 false-positive rows) against the adopted detector's
+0.889–1.000. On the two episodic scenarios it collapses to **0.519 and 0.512** with **3,795 and
+4,305** false-positive rows. It is not a weak detector; it is a detector that requires the
+constraint to be present
 *every day* in order to find its plateau. Since the real array clips intermittently, and since
 the episodic regime is where a real deployment lives, the adopted slope-based detector is the
 one carried forward — but the trade-off is explicit, not hidden.
@@ -422,30 +433,31 @@ injected limit binds, on a pair that cannot saturate:
 
 | clipped days | adopted detector, FP rows |
 |---|---|
-| 35 % (episodic) | 6 |
-| 65 % | 17 |
-| 100 % (chronic) | 25 |
+| 35 % (episodic) | 17 |
+| 65 % | 31 |
+| 100 % (chronic) | 40 |
 
-Across a duty cycle from 35 % to 100 %, false-positive rows stay in single digits to low tens.
+Across a duty cycle from 35 % to 100 %, false-positive rows stay below forty.
 The detector does not depend on the constraint being rare in order to be specific.
 
 ### 2.6 Saturation results
 
-| pair | moderate | severe | flagged days |
-|---|---|---|---|
-| `eu_8+eu_16` | 4,639 rows / **386.6 h** | 85 rows / **7.1 h** | 115 |
-| `eu_10+eu_18` | 6,478 rows / **539.8 h** | 156 rows / **13.0 h** | 147 |
-| `eu_13+eu_21` | 4,113 rows / **342.8 h** | 87 rows / **7.2 h** | 104 |
-| **total** | 15,230 rows / **1,269.2 h** | 328 rows / **27.3 h** | — |
+| pair | saturated hours | flagged days |
+|---|---|---|
+| `eu_8+eu_16` | 6,584 rows / **548.7 h** | 186 |
+| `eu_10+eu_18` | 8,932 rows / **744.3 h** | 226 |
+| `eu_13+eu_21` | 6,075 rows / **506.2 h** | 169 |
+| **total** | 21,591 rows / **1,799.2 h** | 244 (union) |
 
-`eu_10+eu_18` is the most affected channel on every measure: most hours, most severe hours, and
-the most affected days. The severe tier is a small fraction of the moderate one (27.3 h against
-1,269.2 h), which is the expected shape — deep, sustained clipping is rarer than mild clipping.
+`eu_10+eu_18` is the most affected channel on every measure: most hours and most affected
+days.
 
-**The seasonal structure is coherent.** Flags peak in May–July, vanish in the acquisition gaps
-and in the periods when the pairs are off, and show a secondary peak on cold, clear February
-days, when high irradiance coincides with low cell temperature. The pattern is what a
-resource-driven constraint should produce, and it is the same in the moderate and severe tiers.
+**The seasonal structure is coherent.** Flags appear in every high-irradiance month of both
+summers — May–September 2025 (26/23/28/24/9 days) and May–August 2026 (26/26/23/18) — plus a
+secondary group of 41 days from February to April 2026. No flag is raised between October and
+January, when the resource never reaches the level at which a shared channel binds, and none is
+raised inside an acquisition gap or while a pair is off. The pattern is what a resource-driven
+constraint should produce.
 
 ### 2.7 Residual model error, measured three ways
 
@@ -456,17 +468,17 @@ measured on pairs that cannot saturate rather than assumed to be zero.
 
 | | apparent lost energy |
 |---|---|
-| shared pairs (real loss) | **6,120 kWh** |
-| control pairs (cannot saturate) | **409 kWh** |
+| shared pairs (real loss) | **9,249 kWh** |
+| control pairs (cannot saturate) | **661 kWh** |
 | control share of the shared figure | **7 %** |
 
-Per pair the shared losses are 1,873 / 2,538 / 1,709 kWh. The same estimator applied to three
-pairs on independent trackers attributes 409 kWh to them — 7 % of the claimed loss. That is the
+Per pair the shared losses are 2,871 / 3,699 / 2,680 kWh. The same estimator applied to three
+pairs on independent trackers attributes 661 kWh to them — 7 % of the claimed loss. That is the
 residual error of the energy estimate, and it is a fair statement of its precision.
 
 **Fleet-wide.** The check is not limited to the three legacy control pairs. Across **all 117
 cross-inverter independent pairs** (no shared tracker, so none can saturate), the median phantom
-loss is **92 kWh/pair**. A per-pair bias of that size, on a population of that size, is the
+loss is **141 kWh/pair**. A per-pair bias of that size, on a population of that size, is the
 model's error floor rather than a property of particular pairs.
 
 **Seasonal.** As reported in §2.2, the control-pair median deficit is inside ±0.007 in both
@@ -474,27 +486,19 @@ December and June, so the error does not grow when the resource is low.
 
 ### 2.8 Robustness
 
-**To the assumed shape of the constraint.** Three pseudo-pairs × four shapes, limit binding on
-40 % of days:
-
-| case | AUC `> 10 %` | FP rows |
-|---|---|---|
-| hard, constant | 0.995 | 26 |
-| hard, drifting | 0.993 | 42 |
-| soft, constant | 0.996 | 6 |
-| soft, drifting | 0.996 | 6 |
-
-The detector does not depend on a hard-edged or stationary limit; discrimination stays at
-0.993–0.996 and the false-alarm count within a factor of 7 of an already-small number.
+**To the assumed shape of the constraint.** Three pseudo-pairs × four shapes (hard/soft ×
+constant/drifting), with the limit binding on 40 % of days, give AUC `> 10 %` of
+**0.993–0.994** with **42–55** false-positive rows. The detector does not depend on a
+hard-edged or stationary limit.
 
 **To the deficit threshold.** Sweeping the cutoff:
 
 | cutoff | hours (`eu_8+eu_16` / `eu_10+eu_18` / `eu_13+eu_21`) | relative drop per step |
 |---|---|---|
-| 0.10 | 499 / 677 / 463 | — |
-| 0.15 (adopted) | 387 / 540 / 343 | 22–26 % |
-| 0.20 | 254 / 362 / 209 | 33–39 % |
-| 0.30 | 31 / 50 / 24 | 86–89 % |
+| 0.10 | 753 / 979 / 715 | — |
+| 0.15 (adopted) | 549 / 744 / 506 | 24–29 % |
+| 0.20 | 344 / 485 / 297 | 35–41 % |
+| 0.30 | 41 / 69 / 34 | 86–89 % |
 | 0.40 | **0 / 0 / 0** | 100 % |
 
 The response is monotone and smooth with no cliff, so the reported hours are not finely tuned
@@ -504,7 +508,7 @@ at all above `d = 0.40`, which bounds how deep the measured clipping gets.
 
 ### 2.9 Regression status
 
-The frozen harness and the data-product contracts are covered by **51 tests: 50 passing, 1
+The frozen harness and the data-product contracts are covered by **53 tests: 52 passing, 1
 expected failure**, running in ≈4 s. (The one `xfail` documents a known bias in an EDA baseline
 retained in the harness as a comparator; it is not part of this method.) The tests are
 behavioural rather than only snapshot comparisons: that `ref` is invariant to corrupting the
@@ -514,21 +518,23 @@ column is `NaN` outside the decision domain, that masking it changes **no** flag
 
 ### 2.10 Open questions
 
-1. **`eu_15+eu_23` is unexplained.** It is the most-flagged flat pair (108 rows) despite both
-   units being individually healthy, its flags are not marginal boundary cases, and they
-   co-occur with the shared pairs' flags. Recorded ground cover differs across units (`eu_15`
+1. **`eu_15+eu_23` is unexplained.** It is the only pair on independent trackers to carry any
+   flags at all (161 rows on 7 distinct days) despite both units being individually healthy, its
+   flags are not marginal boundary cases (median flagged deficit 0.24 against a 0.15 threshold),
+   and they co-occur with the shared pairs' flags. Recorded ground cover differs across units (`eu_15`
    grass/control, `eu_11` strawberry), which would make a single pair-level `θ` inadequate at
    high irradiance. **This needs site information**: which units share a cover type.
-2. **The severe tier cannot be benchmarked.** Injected severity caps at ≈0.25, so `d > 0.30`
-   scores zero true positives and no threshold or persistence choice can be adjudicated there.
-   The severe tier rests on real-data evidence alone. Extending the benchmark to deeper clips
-   is the highest-value improvement to the test setup.
-3. **Gap bridging is a real precision/recall trade.** On injected ground truth it costs 72
-   additional false-positive rows (108 → 180) for +5.0 pp recall (0.349 → 0.399). On real data
-   it recovers +5.3 % of flagged hours with the control-pair counts bit-identical (0
-   cross-inverter, 108 same-inverter). The benchmark is the only place with ground truth and it
+2. **The benchmark's injected severity caps at ≈0.25.** That ceiling is above the adopted 0.15
+   threshold, so the benchmark *can* adjudicate the threshold itself; what it cannot do is
+   characterise behaviour on the deeper clips the real record contains, which reach `0.40`.
+   Performance on those rows rests on real-data evidence alone. Raising the injected ceiling is
+   the highest-value improvement to the test setup.
+3. **Gap bridging is a real precision/recall trade.** On injected ground truth it costs 130
+   additional false-positive rows (166 → 296) for +4.5 pp recall (0.305 → 0.350). On real data
+   it recovers +6.8 % of flagged hours with the control-pair counts bit-identical (0, 0 and
+   161). The benchmark is the only place with ground truth and it
    is less favourable than the real null; both numbers are reported.
-4. **The decision domain is narrow.** It covers 16–23 % of the record. The released `deficit`
+4. **The decision domain is narrow.** It covers 19–25 % of the record. The released `deficit`
    column is `NaN` elsewhere by design, so a consumer wanting a whole-day severity must compute
    one; the column will not silently supply it.
 
@@ -543,7 +549,7 @@ column is `NaN` outside the decision domain, that masking it changes **no** flag
 ./venv/Scripts/python.exe sat_work/research/step26_methods_figures.py      # the figures above
 ./venv/Scripts/python.exe sat_work/research/step21_canonical_summary.py    # every headline number
 ./venv/Scripts/python.exe sat_work/research/step23_metric_audit.py         # definitions + denominators
-./venv/Scripts/python.exe sat_work/tests/run_tests.py                      # 51 tests
+./venv/Scripts/python.exe sat_work/tests/run_tests.py                      # 53 tests
 ```
 
 | result | produced by |

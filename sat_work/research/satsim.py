@@ -12,7 +12,13 @@ import numpy as np
 import pandas as pd
 
 ROOT = r"c:\Users\nhphuong\Desktop\Solar\all_data"
-CSV = ROOT + r"\combined_may2025_jul2026_area1.csv"
+# DATA REFRESH 2026-09-16: superseded combined_may2025_jul2026_area1.csv.
+# The Jul-2026 export was missing four entire months (2025-08, 2025-09, 2026-03,
+# 2026-04) plus part of 2026-07 and all of 2026-08: 328 of 451 calendar dates
+# present. This export covers 2026-08-31 with 487 of 488 dates present, and is a
+# strict superset -- every one of the 51,005 old timestamps appears with identical
+# values apart from a single rounding artefact on eu_10. See step27_data_refresh_audit.py.
+CSV = ROOT + r"\combined_may2025_aug2026_area1.csv"
 
 EU = [f"eu_{i}" for i in range(1, 25)]
 
@@ -53,6 +59,13 @@ RELIABLE = ["eu_1", "eu_3", "eu_4", "eu_9", "eu_11", "eu_12",
 # cross-inverter pairs for flag-LEVEL nulls. See step17_groundtruth.py sections C/G.
 CONTROL_PAIRS = [("eu_1", "eu_3"), ("eu_4", "eu_12"), ("eu_15", "eu_23")]
 CROSS_INVERTER_CONTROL = ("eu_1", "eu_3")
+
+# THE mid band, defined once. Both the retired baseline (fit_pair/rolling_cap) and the
+# vat-v1 slope (bench.theta_roll) estimate their slope here, and the papers' Algorithm 1
+# quotes it as [rho_-, rho_+]. It used to be a literal in this module AND in bench.py;
+# bench now imports this one, so a single edit moves every consumer and the frozen
+# configuration record has one source to read from.
+BAND = (0.35, 0.60)
 
 
 # --------------------------------------------------------------------------- #
@@ -105,14 +118,14 @@ def preprocess(df: pd.DataFrame, reliable=None) -> dict:
 # the ceiling + expected-output model (notebook cell 12)                      #
 # --------------------------------------------------------------------------- #
 def rolling_cap(s: pd.Series, act: pd.Series, ref: pd.Series, dayidx,
-                window=31, min_periods=5, band=(0.35, 0.6)):
+                window=31, min_periods=5, band=BAND):
     """Per-day p99 of the pair sum over active+daylight rows, then centred rolling median."""
     ok = act & (ref > 0.3)
     per_day = s[ok].groupby(dayidx[ok]).quantile(0.99)
     return per_day.rolling(window, center=True, min_periods=min_periods).median()
 
 
-def fit_pair(df, s, act, ref, dayidx, band=(0.35, 0.6), **cap_kw):
+def fit_pair(df, s, act, ref, dayidx, band=BAND, **cap_kw):
     """Return cap_t (per-row), g0, gain, deficit for one pair."""
     cap_day = rolling_cap(s, act, ref, dayidx, **cap_kw)
     cap_t = cap_day.reindex(dayidx).to_numpy()

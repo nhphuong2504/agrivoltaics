@@ -60,15 +60,27 @@ CANONICAL_CSV = os.path.join(_ROOT, "saturation_flags.csv")
 
 # The schema the ORIGINAL published v1 artefact shipped, frozen here as a literal.
 #
-# This has to be a constant rather than read back from the file on disk. Now that the
-# canonical file is produced by a different method, deriving "the published schema" from
-# it would be circular -- the backwards-compatibility contract would be satisfied by
-# construction and would stop testing anything. Pinning the published column list keeps
-# the guarantee meaningful.
+# This has to be a constant rather than read back from the file on disk. When the canonical
+# file started being produced by a different method, deriving "the published schema" from
+# it became circular -- the contract would hold by construction and test nothing.
+#
+# MIGRATION (2026-09): the published v1 schema is no longer a subset of the canonical one.
+# The three tier columns were collapsed into a single `{pair}_sat`, so a consumer of
+# `sat_moderate` or `sat_severe` must switch to `sat`. That is a deliberate breaking change,
+# not an oversight: the artefact has no consumers outside this repository, and retaining a
+# `sat_moderate` alias would have kept alive exactly the tier vocabulary the simplification
+# removed. `deficit` is unchanged and still carries severity. `test_exports.py` pins the
+# migration one-for-one so it cannot drift.
 PUBLISHED_V1_COLUMNS = (
     "time", "ref", "dq_site_outage",
     *(f"{a}_{b}_{suffix}" for a, b in bench.PAIRS
       for suffix in ("deficit", "sat_moderate", "sat_severe")),
+)
+
+# Published v1 columns that the canonical schema deliberately does NOT carry, each replaced
+# by `{pair}_sat`. Asserted in test_exports.py.
+RETIRED_V1_COLUMNS = tuple(
+    f"{a}_{b}_{suffix}" for a, b in bench.PAIRS for suffix in ("sat_moderate", "sat_severe")
 )
 
 

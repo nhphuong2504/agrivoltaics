@@ -1,0 +1,175 @@
+﻿========================================================================================================
+0. SAMPLING GRID - the denominator behind every 'hours' figure
+========================================================================================================
+   modal timestep 5 min on 76,289 of 76,932 steps (99.2 %)
+   -> hours = flagged rows / 12. Acquisition gaps contribute no
+      rows, so this is SAMPLED hours present in the record, not wall-clock elapsed.
+
+========================================================================================================
+1. THE CANONICAL ARTEFACT
+========================================================================================================
+
+  artefact identity
+      value        : 76,933 rows x 9 cols, 0 infinities (0 found)
+      definition   : repo-root saturation_flags.csv, the vat-v1 export (recommended.py)
+      denominator  : one row per 5-minute timestamp in the source record
+      sha256       : 16db6510f59fa3c10a57ee765a158e96836ff80000f17b41ea0aea422a1fc1cc
+
+  decision domain size
+      value        : 14,650-19,080 rows per pair, 19-25 % of the record
+      definition   : act & ref >= REF_ON & ~dq_mask -- the SAME domain evaluate() computes AUC over
+      denominator  : the shared denominator for every rate below
+
+  downstream safety
+      value        : 0 populated values outside the domain; in-domain range -0.1438 to +1.0000
+      definition   : deficit is NaN outside the decision domain; bounded to [-1, 1] inside it
+      denominator  : so an unfiltered .mean() equals the in-domain mean
+
+========================================================================================================
+2. FLAGGED HOURS - canonical vs published, one table both documents quote
+========================================================================================================
+             pub_rows  can_rows  pub_h  can_h  pub_sev_rows  can_sev_rows  pub_sev_h  can_sev_h  pub_days  can_days
+pair                                                                                                               
+eu_8+eu_16       7223      6584  601.9  548.7           238            95       19.8        7.9       195       186
+eu_10+eu_18      9243      8932  770.2  744.3           381           228       31.8       19.0       232       226
+eu_13+eu_21      6277      6075  523.1  506.2           251           130       20.9       10.8       172       169
+
+  canonical vs published, total
+      value        : 22,743 rows / 1,895.2 h  ->  21,591 rows / 1,799.2 h (-5.1 %)
+      definition   : single `sat` flag, all three shared pairs pooled
+      denominator  : pooled flagged rows over 3 pairs (note: not a rate -- no denominator needed, but do not divide this by the domain size of ONE pair)
+
+  severity depth retained in the score
+      value        : 72.5 h -> 37.8 h  = 1.92x
+      definition   : published severe tier vs the like-for-like corrected rule (d > 0.30, k = 6)
+      denominator  : AUDIT-ONLY comparison documenting a defect in the published baseline. The canonical artefact no longer exports a severe column; it is reproducible via bench.det_severe.
+
+========================================================================================================
+3. THE CONTROL PAIRS - flag-level null
+========================================================================================================
+                       kind  published  canonical
+pair                                             
+eu_1+eu_3    cross-inverter          9          0
+eu_4+eu_12    same-inverter         23          0
+eu_15+eu_23   same-inverter        126        161
+
+  the cross-inverter null is the honest one
+      value        : published 9 rows, canonical 0 rows
+      definition   : flags on the ONLY control pair that does not share an inverter
+      denominator  : 1 pair
+      note         : same-inverter controls (eu_4+eu_12, eu_15+eu_23) carry a co-movement common mode that roughly doubles tail flags, so they are magnitude nulls, not flag-level nulls
+
+  SATURATION_DETECTION.md section 7.1 'separation' claim
+      value        : 22,743 vs 158 rows = 144x
+      definition   : published shared flags vs published control flags
+      denominator  : 3 shared pairs vs 3 control pairs
+      note         : the ratio is real but the doc's INTERPRETATION of the 122 rows was wrong: they are baseline bias, not small real constraint events (see metric 5)
+
+========================================================================================================
+4. ENERGY - and the denominator that was mislabelled
+========================================================================================================
+   per pair (kWh)          published     vat-v1
+      shared eu_8+eu_16       3,195      2,871
+      shared eu_10+eu_18       4,026      3,699
+      shared eu_13+eu_21       2,882      2,680
+      ctrl   eu_1+eu_3        1,280        215
+      ctrl   eu_4+eu_12       1,244        172
+      ctrl   eu_15+eu_23       1,399        274
+
+  shared-pair apparent lost energy
+      value        : published 10,103 kWh -> vat-v1 9,249 kWh
+      definition   : sum of max(expected - measured, 0) over the gate domain: ref >= 0.70 AND s > 0.6*expected AND both active AND no DQ  (the DETECTOR gate)
+      denominator  : NOT 'ref >= 0.70' alone -- the review and the deck must say gate domain
+      note         : the earlier label 'at ref >= 0.7' understated it
+
+  bias floor
+      value        : published 3,923/10,103 = 39 %   ->   vat-v1 661/9,249 = 7 %
+      definition   : the same quantity on the three control pairs, which cannot saturate, as a share of the shared figure
+      denominator  : control total / shared total, same units, same gate
+
+========================================================================================================
+5. THE FLEET-WIDE NULL - why the 122 control rows are bias, not events
+========================================================================================================
+
+  fleet-wide phantom loss
+      value        : published median 857 kWh/pair, vat-v1 median 141 kWh/pair
+      definition   : per-pair phantom lost energy on EVERY cross-inverter independent pair (each has no shared MPPT and so cannot saturate)
+      denominator  : 117 independent pairs
+      note         : vat-v1 fabricates 16 % of the published phantom median; this is the evidence that the control-pair flags are bias
+
+========================================================================================================
+6. BENCHMARK - ground truth, with the scenario set named every time
+========================================================================================================
+   episodic eu_1+eu_3: published FP 986   vat-v1 FP 17   ratio 58x
+   episodic eu_15+eu_23: published FP 708   vat-v1 FP 172   ratio 4x
+
+  specificity gain - THE definition to quote
+      value        : published 1,694 vs vat-v1 189 = 9x
+      definition   : false-positive rows on unclipped days, clip injected on 35 % of days at q=0.75
+      denominator  : POOLED over the 2 episodic scenarios
+      note         : this number has had three denominators in circulation (one scenario, the mean of the two, the pool). Quote it pooled and say so. Per scenario the ratios are 58x and 4x, so the pooled figure hides a wide spread - report the FP ROWS as well.
+
+  why the published validation could not see this
+      value        : published 9 vs vat-v1 40 rows
+      definition   : the same FP count with the limit binding every day
+      denominator  : 1 chronic scenario
+      note         : when the limit binds daily, cap(t) adapts to it and the published detector looks fine - which is the regime its control pairs were effectively in
+
+   duty-cycle FP table (the numbers review section 3.3 must quote):
+      regime                   published FP      vat-v1 FP
+      clip 35 % of days                 986             17
+      clip 65 % of days                  48             31
+      clip 100 % of days                  9             40
+      (single pair eu_1+eu_3, q=0.75; the two episodic scenarios differ by ~2x in
+       published FP, so quote the pair you measured)
+
+                  epi_auc00  epi_auc10  epi_auc20  all_auc00  n_with_pos
+det                                                                     
+D0 published          0.803      0.907      0.955      0.868           5
+D1 rolling-slope      0.961      0.991      0.996      0.933           5
+
+  AUC - TWO legitimate denominators, so quote the set
+      value        : episodic-only: D0 0.803 vs D1 0.961;   all benchmark scenarios with positives: D0 0.868 vs D1 0.933
+      definition   : threshold-free AUC on the evaluation domain
+      denominator  : 2 episodic scenarios / 5 of 6 benchmark scenarios
+      note         : review section 3.5 and the regression test quote different sets, which is why they differ. Both are correct; each must name its set. The noclip scenario has no positives by construction, so it is excluded from the mean rather than scored 0.
+
+   detector discrimination table (the numbers review section 3.5 must quote):
+      mean over the 5 benchmark scenarios that contain positives, episodic + chronic
+
+                       auc_any  auc_gt10  auc_gt20        fp  epi_auc  epi_fp
+det                                                                          
+D1 rolling-slope         0.933     0.993     0.997    49.333    0.961    94.5
+D2 envelope-q90          0.930     0.992     0.996    69.500    0.957   126.0
+D5 control-calibrated    0.887     0.867     0.835    51.667    0.942   145.5
+D0 published             0.868     0.959     0.980   290.167    0.803   847.0
+D4 ceiling-pinned        0.806     0.565     0.550  1640.667    0.515  4050.0
+
+  discrimination, all detectors, one set
+      value        : episodic: best D1 rolling-slope 0.961 down to D4 ceiling-pinned 0.515
+      definition   : threshold-free AUC against injected ground truth; `epi_` columns are the 2 EPISODIC scenarios (the realistic regime), the others are all 5 scenarios with positives
+      denominator  : 2 episodic scenarios / 5 positive scenarios
+      note         : D1 leads on the episodic regime AND on deep clips (auc_gt20) AND on FP; D5 edges it only on the pooled auc_any, where the chronic scenario is mixed in. vat-v1 keeps D1 as canonical (frozen decision). Review section 3.5's table was computed on an older scenario set and matches no current definition; it is replaced by this one.
+
+========================================================================================================
+7. PHYSICAL VALIDATION - the nameplate round-trip
+========================================================================================================
+
+  theta recovers the documented string rating
+      value        : median 8,787 W; median ratio 0.976, sd 0.018; max deviation 4.8 %
+      definition   : per-unit theta (the detector's slope) vs the 9.0 kW nameplate on slide 2 of the deck; theta is estimated in ref in [0.35, 0.60], where clipping cannot bind
+      denominator  : 23 healthy units (24 minus eu_7)
+      note         : nothing was tuned to a nameplate -- this is an independent check that the detector's slope IS the hardware rating
+
+========================================================================================================
+8. NATURAL EXPERIMENT - MPPT clipping, not inverter clipping
+========================================================================================================
+   inverter 6: eu_8+eu_16 deficit_hi +0.176   inverter mate(s) ['eu_24'] +0.000   gap +0.176
+   inverter 2: eu_10+eu_18 deficit_hi +0.181   inverter mate(s) ['eu_2', 'eu_3', 'eu_11', 'eu_19'] +0.001   gap +0.181
+   inverter 4: eu_13+eu_21 deficit_hi +0.160   inverter mate(s) ['eu_5', 'eu_6', 'eu_14', 'eu_22'] +0.002   gap +0.159
+   -> the clipped pairs roll off, their inverter mates do not: the constraint is at
+      the MPPT, not the inverter. This is the deck's strongest causal evidence.
+
+========================================================================================================
+AUDIT COMPLETE
+========================================================================================================

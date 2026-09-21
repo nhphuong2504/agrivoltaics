@@ -1,0 +1,483 @@
+\subsection{Detection of Shared-MPPT Saturation}
+\label{subsec:mppt_saturation}
+
+Two experimental units wired to the same maximum-power-point-tracking (MPPT) channel share a single power ceiling. When the power available to the pair exceeds that ceiling, the tracker holds the operating point below the maximum available and the surplus is never converted. The loss is invisible in per-unit power, because each unit individually remains well below its own rating; it is visible only in the pair sum, and only relative to the resource available at the time. This subsection develops a detector for that condition from logged DC power alone, without an irradiance sensor and without fitting to any hardware rating, and establishes it on five validations that share no failure mode: a normalization-free peer comparison and a per-unit score on real data, a natural experiment supplied by the inverter topology, a cross-check against a hardware specification, and a clip-injection benchmark with labeled ground truth (Fig.~\ref{fig:mppt_evidence}). Three of the array's twenty-one MPPT channels are found to be saturated, with a flagged exposure of $1{,}799.2$ sampled hours under the adopted saturation rule.
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/mppt_evidence}
+  \caption{The evidence chain for shared-MPPT saturation.
+(a)~Normalization-free peer comparison on real data (Section~\ref{sss:mppt_rolloff}). (b)~The inverter-topology natural experiment (Section~\ref{sss:mppt_tracker}). (c)~The $9.0$\,kW nameplate cross-check (Section~\ref{sss:mppt_nameplate}). (d)~ROC against injected ground truth (Section~\ref{sss:mppt_bench}). Panels~(a)--(c) establish that the constraint is real and is located at the tracker; panel~(d) scores the detector that finds it.}
+  \label{fig:mppt_evidence}
+\end{figure*}
+
+\subsubsection{Site, record and topology}
+\label{sss:mppt_site}
+
+Twenty-four units log DC power at $5$-minute resolution from 2025-05-01 to 2026-08-31, giving $76{,}933$ timestamps on $487$ distinct calendar dates within a $488$-day calendar; the $5$-minute grid is modal on $99.2\%$ of consecutive steps, and all but one of the $488$ calendar dates carry data. Durations are reported as \emph{sampled hours} (rows${}/{}12$) --- hours present in the record, not wall-clock hours elapsed --- and where a denominator affects a rate it is stated with the number.
+
+The units are wired to six inverters, and one inverter hosts units on more than one tracker, so the relevant grouping is the MPPT channel rather than the inverter: units on one channel share a tracker and therefore a common power ceiling. The mapping, supplied by the site engineer, is summarised in Table~\ref{tab:mppt_topology}: three channels carry two units each and the other eighteen units occupy one channel apiece, giving twenty-one channels. Each shared pair is co-located with independent units---EU24 on inverter~6; EU2, EU3, EU11 and EU19 on inverter~2; EU5, EU6, EU14 and EU22 on inverter~4---which supplies the natural experiment of Section~\ref{sss:mppt_tracker}.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Array topology. Units sharing an MPPT channel share a tracker and
+therefore a power ceiling.}
+  \label{tab:mppt_topology}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}llcl@{}}
+    \toprule
+    Channel & Units & Inv. & Role \\
+    \midrule
+    shared      & EU8 + EU16   & 6 & saturating pair \\
+    shared      & EU10 + EU18  & 2 & saturating pair \\
+    shared      & EU13 + EU21  & 4 & saturating pair \\
+    independent & other 18 units & 1--6 & peers, controls, reference \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+One unit (EU7) is excluded from every role: it was confirmed faulty by the site engineer, its mid-band slope is $38.4$\,W against $\approx\!8{,}800$\,W for every other unit (a factor of roughly $230$), and a behavioral test that corrupts its data asserts the irradiance proxy is bit-identical.
+
+Four data-quality conditions are evaluated per unit and per timestamp, and any one renders a row ineligible for detection (Table~\ref{tab:mppt_dq}). A fifth, the activity mask, is evaluated per unit and per day, so a unit offline for a whole day is excluded for that day without affecting its pair-mate's other days; a pair is active only where both units are.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Data-quality exclusions. The first four are evaluated per unit and
+per timestamp; the activity mask is evaluated per unit and per day. Any single condition disqualifies. Shares are of the $1{,}846{,}392$ unit-timestamp cells in the record, except \textsc{outage}, which is site-wide and is quoted as a share of the $76{,}933$ timestamps.}
+  \label{tab:mppt_dq}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llr@{}}
+    \toprule
+    Flag & Criterion & Share \\
+    \midrule
+    \textsc{off}     & $P \le 1$\,W while $r > 0.4$, $\ge 12$ samples & $4.00\%$ \\
+    \textsc{stale}   & value repeated, non-zero, $\ge 12$ samples & $0$ \\
+    \textsc{neg}     & $P < 0$ (sensor cross-talk) & $0.01\%$ \\
+    \textsc{outage}  & ${>}80\%$ of $\mathcal{R}$ below $50$\,W at midday & $0.72\%$ \\
+    \textsc{mask}    & daily energy $\le 0.2\,q_{0.95}$ of its own & $20.6\%$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The \textsc{stale} screen fires nowhere in this record and \textsc{neg} on $259$ cells; both are retained because they are cheap and because their absence is itself a reportable property of the acquisition chain. The activity mask is by far the largest exclusion, which is expected: it removes whole days on which a unit was not producing.
+
+\subsubsection{Fleet-median irradiance proxy}
+\label{sss:mppt_ref}
+
+No pyranometer is available, so the available-resource signal $r(t)$ is constructed from the fleet itself:
+%
+\begin{equation}
+r(t) \;=\; \operatorname*{median}_{u \in \mathcal{R}} \frac{P_u(t)}{q_{0.999}\!\left(P_u\right)},
+  \label{eq:mppt_ref}
+\end{equation}
+%
+where $P_u(t)$ is the DC power of unit $u$, $q_{0.999}(P_u)$ its own $0.999$ quantile over the record, and $\mathcal{R}$ the eleven units never offline at midday. Each member of $\mathcal{R}$ enters as a dimensionless fraction of its own peak, and the median across eleven suppresses any single unit's fault or shading. No member of $\mathcal{R}$ shares a tracker with a shared pair, so $r$ is proportional to irradiance wherever the reference units are themselves unclipped; units on an independent \emph{control} pair are retained, and the resulting self-reference is quantified in Section~\ref{subsubsec:mppt_algorithms}.
+
+\subsubsection{The saturation statistic}
+\label{sss:mppt_stat}
+
+Write $\mathcal{P}$ for the pairs under test, $\mathcal{C}$ for the disjoint set of independent control pairs, and $\mathcal{E} = \mathcal{P} \cup \mathcal{C}$ for the pairs on which the detector is evaluated. Let $s_p(t) = P_a(t) + P_b(t)$ be the measured output of pair $p = \{a,b\}$, and let $D(t)$ denote the calendar day containing $t$. The pair's \emph{saturation-free} output is modeled as a time-varying slope against the proxy. A slope is first estimated within each day, over the mid band alone,
+%
+\begin{equation}
+\tilde\theta_p(D) \;=\; \operatorname*{median}_{t \in A_p(D)} \frac{s_p(t)}{r(t)},
+  \label{eq:mppt_theta_day}
+\end{equation}
+%
+where $A_p(D) = \{\, t \in D : 0.35 \le r(t) \le 0.60 \,\}$ collects the mid-band samples of that day. Those daily values are then smoothed by a $31$-day centered rolling median over the complete daily calendar,
+%
+\begin{equation}
+\theta_p(t) \;=\; \operatorname{RollMed}_{31\mathrm{d}} \big[\tilde\theta_p\big]\big(D(t)\big).
+  \label{eq:mppt_theta}
+\end{equation}
+%
+The expected output and the continuous deficit follow as
+%
+\begin{equation}
+\widehat{s}_p(t) \;=\; \theta_p(t)\, r(t), \qquad d_p(t) \;=\; 1 - \frac{s_p(t)}{\widehat{s}_p(t)} ,
+  \label{eq:mppt_deficit}
+\end{equation}
+%
+so that $d_p(t)$ is a continuous severity: the fraction of the saturation-free output that the pair failed to deliver.
+
+Three design choices carry the method. The slope is \emph{estimated in the mid band}: a shared channel clips at the top of the irradiance range, so a slope fitted there would be fitted to clipped data, and $r \in [0.35,\,0.60]$ is the highest band in which clipping provably cannot bind. It is retained per day rather than pooled, so a day without mid-band data cannot borrow $\theta$ from elsewhere, and $\theta_p$ is left undefined unless at least five days in the rolling window are covered. It is a \emph{slope in watts, not a ceiling}: since $\widehat{s} = \theta r$, $\theta$ is the pair's potential output at $r = 1$ and is directly comparable to a hardware rating (Section~\ref{sss:mppt_nameplate}), whereas a ceiling is capped by whatever the hardware was doing at peak. And it is \emph{time-varying}: $s/r$ drifts through the year with soiling, cell temperature and the seasonal resource, and a single global factor cannot track a moving ratio --- whatever it fails to track reappears as a spurious deficit. Tracking the level locally is what keeps the model calibrated in every month (Section~\ref{sss:mppt_calibration}).
+
+\subsubsection{Decision domain and gating}
+\label{sss:mppt_domain}
+
+Detection is applied only where the question is answerable. Writing $\mathrm{DQ}$ for the exclusions of Table~\ref{tab:mppt_dq},
+%
+\begin{align}
+  \mathcal{D}_p(t) &= \{r \ge 0.70\} \wedge \{\text{both active}\}
+\wedge \neg\,\mathrm{DQ},
+  \label{eq:mppt_domain}\\[2pt]
+  \mathcal{G}_p(t) &= \mathcal{D}_p(t) \wedge
+\{s_p > 0.6\,\widehat{s}_p\}.
+  \label{eq:mppt_gate}
+\end{align}
+%
+The gate is thus the decision domain plus one further condition, and both are physical: below $r = 0.70$ there is insufficient resource for a ceiling to bind, and $s_p > 0.6\,\widehat{s}_p$ excludes low-power rows where $\theta r \rightarrow 0$ renders $d$ numerically meaningless.
+
+The decision domain \eqref{eq:mppt_domain} is the set over which every rate reported below is computed, and is the same expression over which the benchmark's AUC is computed. It contains $14{,}650$--$19{,}080$ rows per pair, or $19$--$25\%$ of the record. The released \texttt{deficit} column is undefined outside it, so an unfiltered mean over that column is by construction the in-domain mean; inside the domain the column is bounded to $[-1,1]$.
+
+\subsubsection{Saturation decision rule}
+\label{sss:mppt_rule}
+
+Saturation is treated as a sustained condition rather than a single-sample excursion, so the detector exports one binary flag, \texttt{sat}, evaluated only inside the physical gate \eqref{eq:mppt_gate}. A sample qualifies when
+%
+\begin{equation}
+  d_p(t) > 0.15 ,
+  \label{eq:mppt_flag_threshold}
+\end{equation}
+%
+a flag is raised where three qualifying $5$-minute samples ($15$\,min) occur consecutively, and a single non-qualifying sample between two qualifying ones may be bridged provided it too lies inside the gate. The bridge can therefore repair a one-sample interruption in an otherwise sustained event, but never create a flag where the pair is inactive, the resource is too low, or data quality has excluded the row.
+
+The threshold and persistence are fixed method constants rather than tuned per pair, and their behavior is checked in the injection benchmark and the threshold-sensitivity sweep of Section~\ref{sss:mppt_robust}. One-sample bridging raises pooled recall from $0.305$ to $0.350$ on injected ground truth and recovers $+6.8\%$ of flagged hours on real data. A qualifying run is also broken whenever the record step exceeds the nominal grid, so persistence cannot accumulate across an acquisition gap.
+
+\subsubsection{Algorithms}
+\label{subsubsec:mppt_algorithms}
+
+The method separates into a continuous stage and a decision stage. Algorithm~\ref{alg:mppt_deficit} produces the deficit $d_p(t)$ of \eqref{eq:mppt_deficit} and is the only stage that models the power measurements; the decision stage reduces that deficit to the single exported flag. The calibration constants---the mid band, the gate level and the floor---are confined to the continuous stage, while the adopted threshold, persistence and bridging rule live in the decision stage. The separation is deliberate: the continuous stage is what the calibration and nameplate validations test, while the decision stage is what the threshold and duty-cycle sweeps perturb.
+
+\begin{algorithm*}[!t]
+\caption{\textsc{vat-v1}: continuous saturation deficit}
+\label{alg:mppt_deficit}
+\begin{algorithmic}[1]
+\Require DC power $P_u(t)$ for units $u \in \mathcal{U}$ on a regular grid of
+step $\Delta$ (here $5$\,min), $t \in \mathcal{T}$
+\Require reference set $\mathcal{R} \subseteq \mathcal{U}$; evaluated pairs
+$\mathcal{E} = \mathcal{P} \cup \mathcal{C}$, where $\mathcal{P}$ are the pairs under test and $\mathcal{C}$ the independent control pairs, with $\mathcal{P} \cap \mathcal{C} = \emptyset$
+\Require mid band $[\rho_-,\rho_+] = [0.35,\,0.60]$; window $W = 31$\,d with a
+minimum of $W_{\min} = 5$ covered days; gate level $\rho_g = 0.70$; floor $\phi = 0.6$; activity fraction $\alpha = 0.2$
+\Ensure $d_p(t)$ on the decision domain $\mathcal{D}_p$, undefined elsewhere, and
+gate indicator $\mathcal{G}_p(t)$, for every $p \in \mathcal{E}$
+\Statex
+\State \textbf{// per-unit exclusions and activity}
+\For{$u \in \mathcal{U}$, each day $D$ in the record}
+  \State $a_u(D) \gets \big[\, \textstyle\sum_{t \in D} P_u(t)
+\;>\; \alpha \cdot q_{0.95}\big(\{\sum_{t \in D'} P_u(t) : D'\}\big) \,\big]$ \Comment{activity mask; a unit off all day is inactive}
+\EndFor
+\For{$u \in \mathcal{U}$, $t \in \mathcal{T}$}
+  \State $m_u(t) \gets \neg\,\mathrm{DQ}(u,t)$
+\Comment{$4$ exclusions: unit off, stale, negative, site outage}
+\EndFor
+\Statex
+\State \textbf{// fleet-median irradiance proxy, Eq.~\eqref{eq:mppt_ref}}
+\For{$u \in \mathcal{R}$}
+  \State $\pi_u \gets q_{0.999}\big(\{P_u(t) : t \in \mathcal{T}\}\big)$
+\EndFor
+\For{$t \in \mathcal{T}$}
+  \State $r(t) \gets \operatorname{median}\big\{\,P_u(t)/\pi_u \;:\; u \in \mathcal{R}\,\big\}$
+\EndFor
+\Statex
+\State \textbf{// per-pair slope and deficit}
+\For{$p = \{a,b\} \in \mathcal{E}$}
+  \State $s_p(t) \gets P_a(t) + P_b(t)$ \textbf{ for all } $t$
+  \State $p^{\mathrm{act}}(t) \gets a_a(D(t)) \wedge a_b(D(t))$
+\Comment{$D(t)$ is the day containing $t$}
+  \For{each day $D$ in the record}
+    \State $A \gets \{\, t \in D : \rho_- \le r(t) \le \rho_+,\;
+p^{\mathrm{act}}(t),\; m_a(t) \wedge m_b(t),\; s_p(t)/r(t)\ \text{defined} \,\}$
+    \If{$A \neq \emptyset$}
+      \State $\tilde\theta_p(D) \gets \operatorname{median}\{\, s_p(t)/r(t) : t \in A \,\}$
+\Comment{Eq.~\eqref{eq:mppt_theta_day}}
+    \Else
+      \State $\tilde\theta_p(D) \gets \textsc{undefined}$
+\Comment{never borrowed from another day}
+    \EndIf
+  \EndFor
+  \State $\theta_p(t) \gets$ centered rolling median of $\tilde\theta_p$ over $W$
+days of the complete daily calendar, evaluated on the day containing $t$, defined where at least $W_{\min}$ days in the window are covered \Comment{Eq.~\eqref{eq:mppt_theta}}
+  \For{$t \in \mathcal{T}$}
+    \State $\widehat{s}_p(t) \gets \theta_p(t)\, r(t)$
+    \If{$\mathcal{D}_p(t)$ holds} \Comment{Eq.~\eqref{eq:mppt_domain}}
+      \State $d_p(t) \gets 1 - s_p(t)/\widehat{s}_p(t)$
+    \Else
+      \State $d_p(t) \gets \textsc{undefined}$
+    \EndIf
+    \State $\mathcal{G}_p(t) \gets \mathcal{D}_p(t) \wedge
+\big(s_p(t) > \phi\,\widehat{s}_p(t)\big)$ \Comment{Eq.~\eqref{eq:mppt_gate}}
+  \EndFor
+\EndFor
+\State \Return $d$, $\mathcal{G}$
+\end{algorithmic}
+\end{algorithm*}
+
+Three properties are worth stating. No unit of any pair under test appears in $\mathcal{R}$, so the proxy cannot be contaminated by the effect being measured; in the benchmark the injected pair is likewise removed, leaving $|\mathcal{R}| = 9$ against $11$. Units on a \emph{control} pair are \emph{not} removed, so a control pair contributes partially to the reference against which it is scored: a second-order self-reference (removing all six such units changes $r$ to a correlation of $0.9998$, and the worst control-pair in-domain median deficit is $+0.006$ against a shared-pair signal of ${\approx}0.18$) that does not touch the pairs under test, but is a stated assumption rather than a non-issue. And $\tilde\theta_p$ is left undefined on days without mid-band coverage rather than imputed, so the rolling median narrows its support instead of extrapolating a slope across a gap.
+
+The decision stage needs no separate listing. A sample is a candidate where $\mathcal{G}_p$ holds and $d_p > 0.15$; a single non-candidate is bridged when both neighbours are candidates and the gate holds at the filled sample; a flag is raised where a run of $k = 3$ candidates ($15$\,min) survives, runs being broken wherever the record step exceeds $6$\,min. The bridge is constrained by the physical gate, so it can never place a flag on a row the screen would have excluded, and the run-breaking clause prevents an event from spanning an acquisition gap that contains no observations.
+
+The pipeline is linear in the number of timestamps for a fixed number of evaluated pairs: the proxy is a median over $|\mathcal{R}| = 11$ values per timestamp, the daily medians touch each row once, and the rolling median runs over the $488$-day calendar rather than the raw grid --- which matters, because a $31$-day window applied to a gapped per-day index can span far more than $31$ days. On the full record the whole pipeline, including every validation and sweep reported below, runs in seconds, which is what allows the sweeps to be run over a grid of operating points rather than at a single setting. Every constant in Algorithm~\ref{alg:mppt_deficit} and in the decision rule is read from one frozen configuration record, and the harness asserts that the record still describes the code, so re-tuning any of them fails the test suite rather than quietly changing a reported number.
+
+\subsubsection{Validation design}
+\label{sss:mppt_validation}
+
+Five validations are used, chosen so that no two share a failure mode. The first four are independent of the detector and of each other.
+
+\begin{enumerate}
+  \item \textbf{Normalization-free peer test} (Section~\ref{sss:mppt_rolloff}): a difference-in-differences on raw normalized power --- each unit divided by its own $0.999$ quantile, the pair sum by a peer pair's sum, the ratio rescaled to median $1$ in the mid band. Nothing but a ratio of raw measurements appears---no $\theta$, no $r$ in the denominator, no fitted parameter---so a roll-off produced by the proxy could not survive it. Repeated against three peer references.
+  \item \textbf{Per-unit test} (Section~\ref{sss:mppt_rolloff}): each unit scored alone as $d_u = 1 - P_u/(\theta_u r)$ at $r \ge 0.75$, with $\theta_u$ from that unit's own mid band. It uses no pair sums and no shared parameters, and so tests the topology assumption that only the six units on shared channels can saturate.
+  \item \textbf{Inverter-topology natural experiment} (Section~\ref{sss:mppt_tracker}): the same per-unit statistic computed on each shared pair's inverter mates. A constraint imposed by the inverter, through a shared AC limit or a shared DC bus, must appear in the mates; one imposed by the tracker must not.
+  \item \textbf{Nameplate cross-check} (Section~\ref{sss:mppt_nameplate}): $\theta$ against the documented $9.0$\,kW string rating. Since $\theta$ is estimated where clipping cannot bind, and nothing was fitted to a nameplate, agreement is a prediction rather than a calibration.
+  \item \textbf{Clip-injection benchmark} (Section~\ref{sss:mppt_bench}): ground truth manufactured on pairs that cannot saturate, by clamping the pair sum on selected days and scoring the detector on that pair. Six scenarios (Table~\ref{tab:mppt_scenarios}) span the two failure-relevant axes, duty cycle and temporal pattern, and the injected pair is held out of $r$, so it never helps define the reference against which it is scored (nine reference units there against eleven). Two metrics are reported: threshold-free AUC on the decision domain, so no result can be a threshold artefact, and raw false-positive rows on unclipped days, which is what a user experiences.
+\end{enumerate}
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Clip-injection scenarios. The clamp is placed at $0.75\,p_{95}$,
+where $p_{95}$ is the $95$th percentile of the pair sum over clear-sky rows ($r \ge 0.85$); this caps injected severity at $d \approx 0.25$.}
+  \label{tab:mppt_scenarios}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}clrll@{}}
+    \toprule
+    \# & Host pair & Days clipped & Ceiling & Pattern \\
+    \midrule
+    1 & EU1 + EU3    & $35\%$  & $0.75\,p_{95}$ & chronic \\
+    2 & EU1 + EU3    & $35\%$  & $0.75\,p_{95}$ & episodic \\
+    3 & EU1 + EU3    & $100\%$ & $0.75\,p_{95}$ & chronic \\
+    4 & EU1 + EU3    & $100\%$ & none           & control \\
+    5 & EU4 + EU12   & $35\%$  & $0.75\,p_{95}$ & chronic \\
+    6 & EU15 + EU23  & $35\%$  & $0.75\,p_{95}$ & episodic \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The benchmark carries a stated ceiling on severity: the clamp sits at $75\%$ of the pair's $p_{95}$ clear-sky peak, capping injected severity at $d \approx 0.25$, and that consequence is carried through to Section~\ref{sss:mppt_limits} rather than hidden. Two further sweeps --- constraint shape (hard/soft $\times$ constant/drifting) and threshold sensitivity --- test the arbitrary choices (Section~\ref{sss:mppt_robust}).
+
+\subsubsection{The roll-off is real and is not an artefact of the reference}
+\label{sss:mppt_rolloff}
+
+Because $r$ is derived from the same fleet whose saturation is under test, a roll-off in $s/(\theta r)$ could in principle be produced by the normalization rather than by the hardware. The peer test removes that possibility.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/mppt_rolloff}
+  \caption{Median normalized pair-output ratio against a peer pair, in $r$ bins,
+rescaled to $1$ in $r \in [0.35,\,0.60]$. No $\theta$, no fitted parameter and no $r$ in the denominator enters the statistic. EU1+EU3 is the peer denominator here, so its own trace is unity by construction and is drawn only for reference; the informative controls are EU4+EU12 and EU15+EU23.}
+  \label{fig:mppt_rolloff}
+\end{figure}
+
+Shared pairs sit at $1.000$ against peers in the mid band and then decline across the high-irradiance range, reaching $0.572$--$0.594$ in the topmost bin, with roughly half of the total fall occurring above $r \approx 0.88$; control pairs stay within $0.991$--$1.020$ across the whole range (Fig.~\ref{fig:mppt_rolloff}). Repeating the test against three different peer references moves the shared-pair figures only between $0.840$ and $0.896$, so no single choice of peer drives the result. Taking the median ratio directly over every sample with $r \ge 0.70$, so that no bin-width choice enters, gives Table~\ref{tab:mppt_peer}; each pair is referred to a peer pair disjoint from itself.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Median normalized pair-output ratio against peer pairs over all
+samples with $r \ge 0.70$. No fitted parameter enters the statistic. The peer is EU1+EU3, except for EU1+EU3 itself, which is referred to EU4+EU12.}
+  \label{tab:mppt_peer}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llrrr@{}}
+    \toprule
+    Pair & Channel & Ratio & vs.\ peers & $n$ \\
+    \midrule
+    EU8 + EU16   & shared      & $0.863$ & $-13.7\%$ & $15{,}247$ \\
+    EU10 + EU18  & shared      & $0.851$ & $-14.9\%$ & $19{,}080$ \\
+    EU13 + EU21  & shared      & $0.896$ & $-10.4\%$ & $14{,}650$ \\
+    \addlinespace
+    EU1 + EU3    & independent & $0.993$ & $-0.7\%$  & $15{,}247$ \\
+    EU4 + EU12   & independent & $1.007$ & $+0.7\%$  & $19{,}080$ \\
+    EU15 + EU23  & independent & $1.000$ & $0.0\%$   & $14{,}650$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The per-unit test reproduces the same effect with a different statistic and no pair sums at all. Scoring each of the twenty-four units individually at $r \ge 0.75$, the six units on shared channels score $+0.152$ to $+0.184$, the other seventeen healthy units score $-0.005$ to $+0.010$, and the excluded faulty unit scores $-0.232$. The six highest-scoring units in the fleet are exactly the six on shared channels. This validates the shared/independent labeling on which the whole analysis depends, and does so using neither any pair sum nor any shared parameter.
+
+\subsubsection{The model is calibrated against a model-free measurement}
+\label{sss:mppt_calibration}
+
+The detector's deficit is a model output; the peer ratio of Section~\ref{sss:mppt_rolloff} is not, being a ratio of raw measurements with no fitted parameter. Computing both per irradiance bin therefore checks the model against an independent measurement of the same physical quantity (Fig.~\ref{fig:mppt_calibration}).
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/mppt_calibration}
+  \caption{(a)~Median deficit per $r$ bin, averaged over each class of pairs.
+Open markers are the model-free peer-ratio measurement; solid lines are the detector. (b)~The disagreement, drawn at its own scale.}
+  \label{fig:mppt_calibration}
+\end{figure}
+
+Averaged over the gate ($r \ge 0.70$), shared pairs give a detector deficit of $+0.230$ against a model-free value of $+0.215$, a residual of $+0.0142$ with a largest single-bin gap of $0.023$; control pairs give $+0.005$ against $-0.000$, a residual of $+0.0050$ with a largest gap of $0.010$. Two conclusions follow. On pairs that cannot clip the model reports essentially nothing, so the deficit it reports elsewhere is not a coupling artefact. And on pairs that do clip it tracks the independent measurement to within $0.014$ on average, so the magnitude is right and not merely the sign.
+
+There is no seasonal residual. In the low-sun month (December, $r \ge 0.5$) the control-pair median deficits are $-0.005$, $-0.001$ and $+0.002$; in June they are $+0.005$, $+0.002$ and $+0.007$. Every value lies inside $\pm 0.007$, so the model does not manufacture a deficit when the resource is low---the failure mode that a level-tracking slope is specifically chosen to avoid (Section~\ref{sss:mppt_stat}).
+
+\subsubsection{The constraint is at the tracker, not the inverter}
+\label{sss:mppt_tracker}
+
+Each saturating pair sits on an inverter that also hosts independent units. Computing the same per-unit high-irradiance deficit for those mates isolates where the limit lives (Table~\ref{tab:mppt_inverter}).
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Inverter-topology natural experiment. Entries are median per-unit
+deficits at $r \ge 0.75$: for the pair, the median over its two units; for the mates, the median over the independent units on the same inverter.}
+  \label{tab:mppt_inverter}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}clrrr@{}}
+    \toprule
+    Inv. & Shared pair & Pair $d$ & Mates' $d$ & Gap \\
+    \midrule
+    6 & EU8 + EU16   & $+0.176$ & $+0.000$ & $+0.176$ \\
+    2 & EU10 + EU18  & $+0.181$ & $-0.001$ & $+0.182$ \\
+    4 & EU13 + EU21  & $+0.160$ & $+0.001$ & $+0.159$ \\
+    \bottomrule
+  \end{tabular}
+  \par\smallskip
+  \parbox{\columnwidth}{\footnotesize Mates: EU24 (inv.~6); EU2, EU3, EU11,
+EU19 (inv.~2); EU5, EU6, EU14, EU22 (inv.~4).}
+\end{table}
+
+The clipped pairs roll off by $16$--$18\%$; their inverter mates---which share AC cabling, the inverter's DC bus and any grid-side limit---roll off by approximately zero. A shared AC or inverter-level constraint would have to appear in both. The constraint is therefore located at the MPPT channel, which is the mechanism the detector is designed to find, and this is the strongest causal evidence in the analysis.
+
+\subsubsection{The detector's slope reproduces the hardware rating}
+\label{sss:mppt_nameplate}
+
+Because $\theta$ is a slope in watts, it is directly comparable to the documented string rating. Across the twenty-three healthy units, the statistics of Table~\ref{tab:mppt_nameplate} hold.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Estimated slope $\theta$ against the documented $9.0$\,kW string
+rating, over the $23$ healthy units. The nameplate entered the analysis only after the detector was frozen.}
+  \label{tab:mppt_nameplate}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    Statistic & Value \\
+    \midrule
+    Median $\theta$ & $8{,}787$\,W \\
+    Median $\theta$ / nameplate & $0.976$ \\
+    S.d.\ of the ratio & $0.017$ \\
+    Maximum deviation from $9.0$\,kW & $4.8\%$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Nothing was fitted to $9.0$\,kW: $\theta$ is estimated from mid-band irradiance and the nameplate entered only after the detector was frozen. The detector's central parameter therefore \emph{is} the hardware rating, recovered to within a few percent --- the result that most strongly indicates the model is physically right rather than numerically convenient. Panel~(c) of Fig.~\ref{fig:mppt_evidence} shows the full distribution.
+
+\subsubsection{Performance against injected ground truth}
+\label{sss:mppt_bench}
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/mppt_scoreboard}
+  \caption{Four candidate detectors on the clip-injection benchmark. The
+positives are injected labels rather than model output, so this scores the detector rather than asserting it.}
+  \label{fig:mppt_scoreboard}
+\end{figure}
+
+Table~\ref{tab:mppt_bench} scores four candidate detectors, using threshold-free AUC on the decision domain alongside raw false-positive row counts on unclipped days. Denominators are stated because they change the answer: the episodic column averages the two $35\%$-duty episodic scenarios, which is the realistic regime; the any-clip column averages the five scenarios containing positives, the clip-free control scenario being excluded rather than scored zero; and the false-positive column averages all six.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Candidate detectors on the clip-injection benchmark. AUC is computed
+threshold-free on the decision domain \eqref{eq:mppt_domain}; chance is $0.5$.}
+  \label{tab:mppt_bench}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    & \multicolumn{2}{c}{AUC} & Mean FP \\
+    \cmidrule(lr){2-3}
+    Candidate & Episodic & Any clip & rows \\
+    \midrule
+    $\theta(t)\,r$ (adopted)   & $\mathbf{0.961}$ & $0.933$ & $\mathbf{49}$ \\
+    Clear-sky $\theta_{90}(t)$ & $0.957$ & $0.930$ & $70$ \\
+    Control-null calibrated    & $0.942$ & $0.887$ & $52$ \\
+    Ceiling-pinned             & $0.515$ & $0.806$ & $1{,}641$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+On the realistic episodic regime the adopted detector reaches $0.961$; the clear-sky envelope is a close peer at $0.957$, and the control-null variant trails at $0.942$. The ordering on the pooled any-clip column matches, where that column is a different quantity---excess over the control null for one variant, shortfall against an expectation for the others. The adopted detector is best on every column, but the margin over the clear-sky envelope is small enough that the two should be read as equivalent on discrimination; what separates them is the false-positive count, $49$ against $70$.
+
+Two negative results are recorded so that they are not rediscovered. An $r$-gated two-state hidden Markov model fails for a physical reason: cloud dips and clips are both low-utilisation states, and it cannot separate them (AUC $\approx 0.48$). A ceiling-pinned detector---flagging when output sits on a plateau while the resource is high---is the mirror image of the adopted one: on the chronic scenarios it is near-perfect (AUC $1.000$ and $0.999$, eight and five false-positive rows) against $0.889$ and $0.963$, but on the two episodic ones it collapses to $0.519$ and $0.512$ with $3{,}795$ and $4{,}305$ false-positive rows. It requires the constraint to be present every day in order to find its plateau, so since the array clips intermittently and the episodic regime is where a real deployment lives, the slope-based detector is the one carried forward.
+
+\subsubsection{Saturation in the array}
+\label{sss:mppt_results}
+
+Table~\ref{tab:mppt_hours} reports the exposure under the single adopted saturation rule. EU10+EU18 is the most affected channel, with the most flagged hours and the most affected days.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Flagged exposure under the adopted \texttt{sat} rule, in rows and sampled hours (rows${}/{}12$). Flagged days are distinct calendar days carrying at least one saturation flag; the three pairs overlap, so the union is $244$ days rather than the column sum.}
+  \label{tab:mppt_hours}
+  \small
+  \setlength{\tabcolsep}{6pt}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Pair & Flagged rows & Sampled h & Days \\
+    \midrule
+    EU8 + EU16   & $6{,}584$ & $548.7$ & $186$ \\
+    EU10 + EU18  & $8{,}932$ & $744.3$ & $226$ \\
+    EU13 + EU21  & $6{,}075$ & $506.2$ & $169$ \\
+    \midrule
+    Total & $21{,}591$ & $\mathbf{1{,}799.2}$ & $244$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The seasonal structure is coherent. Of the $244$ affected days, $152$ fall in May--July; the remaining $92$ fall in February--April and August--September, when clear conditions raise the resource to a level at which a shared channel clips. No flag is raised in the acquisition gaps or in the periods when the pairs are off. The pattern is what a resource-driven constraint should produce.
+
+\subsubsection{Residual model error}
+\label{sss:mppt_residual}
+
+The detector's own model is the one quantity in the chain that could be biased, so its error is measured on pairs that cannot saturate rather than assumed to be zero. Integrating $\max(\widehat{s} - s,\,0)$ over the gate domain gives an apparent lost energy of $2{,}871$, $3{,}699$ and $2{,}680$\,kWh for the three shared pairs, $9{,}249$\,kWh in total. The same estimator applied to the three pairs on independent trackers attributes $661$\,kWh to them, $7\%$ of the claimed loss; that is the residual error of the energy estimate and a fair statement of its precision.
+
+The check is not confined to the three legacy control pairs. Across all $117$ cross-inverter independent pairs, none of which shares a tracker and so none of which can saturate, the median phantom loss is $141$\,kWh per pair --- an error floor rather than a property of particular pairs. The control-pair median deficit lies inside $\pm 0.007$ in both December and June (Section~\ref{sss:mppt_calibration}), so the error does not grow when the resource is low.
+
+\subsubsection{Robustness and sensitivity}
+\label{sss:mppt_robust}
+
+Three sweeps test whether the result depends on an arbitrary choice. Against the \emph{shape} of the constraint, three pseudo-pairs were run under four shapes (hard/soft $\times$ constant/drifting) with the limit binding on $40\%$ of days; discrimination stays at $0.993$--$0.994$ with $42$--$55$ false-positive rows, so the detector requires neither a hard-edged nor a stationary limit. Against its \emph{duty cycle}, sweeping the fraction of days on which an injected limit binds gives $17$ false-positive rows at $35\%$, $31$ at $65\%$ and $40$ at $100\%$: the detector does not need the constraint to be rare in order to be specific.
+
+Against the \emph{deficit threshold}, the response is monotone and smooth with no cliff (Table~\ref{tab:mppt_threshold}), so the reported hours are not finely tuned to the adopted $0.15$ cutoff. Two features are stated rather than left implicit: the fall between $0.20$ and $0.30$ is steep, removing $86$--$89\%$ of the remaining hours, and there is no support at all above $d = 0.40$, which bounds how deep the measured clipping gets.
+
+\begin{table}[!t]
+  \renewcommand{\arraystretch}{1.3}
+  \centering
+  \caption{Threshold-sensitivity sweep. Flagged sampled hours per shared pair,
+and the relative drop at each step.}
+  \label{tab:mppt_threshold}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lrrrl@{}}
+    \toprule
+    Cutoff & \makebox[2.6em][r]{8+16} & \makebox[2.6em][r]{10+18}
+           & \makebox[2.6em][r]{13+21} & Drop \\
+    \midrule
+    $0.10$            & $753$ & $979$ & $715$ & --- \\
+    $0.15$ (adopted)  & $549$ & $744$ & $506$ & $24$--$29\%$ \\
+    $0.20$            & $344$ & $485$ & $297$ & $35$--$41\%$ \\
+    $0.30$            & $41$  & $69$  & $34$  & $86$--$89\%$ \\
+    $0.40$            & $0$   & $0$   & $0$   & $100\%$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Limitations}
+\label{sss:mppt_limits}
+
+Three limitations are carried forward.
+
+First, one independent pair (EU15+EU23) is unexplained. It is the only pair on independent trackers to carry any flags at all ($161$ rows on seven distinct days) despite both units being individually healthy; the flags are not marginal boundary cases, with a median flagged deficit of $0.24$ against a $0.15$ threshold, and they co-occur with the shared pairs' flags. Recorded ground cover differs across units, which would make a single pair-level $\theta$ inadequate at high irradiance; resolving this requires site information on which units share a cover type.
+
+Second, gap bridging is a genuine precision/recall trade. On injected ground truth it costs $130$ additional false-positive rows ($166 \rightarrow 296$) for $+4.5$\,pp pooled recall ($0.305 \rightarrow 0.350$); on real data it recovers $+6.8\%$ of flagged hours with control-pair counts unchanged. The benchmark is the only setting with ground truth and is the less favourable of the two; both numbers are reported.
+
+Third, the decision domain is narrow, covering $19$--$25\%$ of the record. The released \texttt{deficit} column is undefined outside it by design, so a consumer requiring a whole-day severity must construct one; the column will not silently supply it.
+
+\subsubsection{Reproducibility}
+\label{sss:mppt_repro}
+
+The method's output is a single artefact with one row per $5$-minute timestamp, carrying per pair the continuous deficit and the single binary flag \texttt{sat}. Regeneration is byte-deterministic, and because the artefact is not itself versioned, reproducibility is locked by a committed manifest recording the method parameters, every headline metric with its denominator, and the artefact's checksum. The manifest reads its parameters from the detector code rather than a transcription, so re-tuning a threshold or a persistence constant fails the verification suite until the lock is regenerated deliberately; every locked metric is re-derived from the live artefact on each run, so the lock cannot become vacuous, and every number quoted above comes from one metrics module, so the summary, the lock and the audit cannot drift apart.
+
+The harness comprises $52$ tests, $51$ passing and one an expected failure documenting a known bias in a retained baseline comparator that is not part of this method. They are behavioral rather than snapshot comparisons: that $r$ is invariant to corrupting the excluded unit, that flags are never set below the physical gate, that the released deficit column is undefined outside the decision domain, that masking it changes no flag column, and that the live artefact still satisfies the committed version lock.

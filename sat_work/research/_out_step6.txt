@@ -1,0 +1,15 @@
+﻿====================================================================================================
+ROBUSTNESS TO CONSTRAINT SHAPE  (q=0.75, 40% of days, 3 pseudo-pairs each)
+====================================================================================================
+hard, constant   D1: auc10=0.993 fp=    55  D2: auc10=0.993 fp=    76  D0: auc10=0.837 fp=  2911
+hard, drifting   D1: auc10=0.993 fp=    55  D2: auc10=0.993 fp=    76  D0: auc10=0.816 fp=  2358
+soft, constant   D1: auc10=0.994 fp=    42  D2: auc10=0.993 fp=    59  D0: auc10=0.836 fp=  2863
+soft, drifting   D1: auc10=0.993 fp=    42  D2: auc10=0.993 fp=    59  D0: auc10=0.812 fp=  2134
+
+                      auc00                                         auc10                                       fp_rows                                 
+det            D0 published D1 rolling-slope D2 envelope-q90 D0 published D1 rolling-slope D2 envelope-q90 D0 published D1 rolling-slope D2 envelope-q90
+case                                                                                                                                                    
+hard, constant        0.731            0.961           0.957        0.837            0.993           0.993     2911.000           55.333          76.000
+hard, drifting        0.703            0.952           0.946        0.816            0.993           0.993     2358.333           55.333          76.333
+soft, constant        0.721            0.975           0.970        0.836            0.994           0.993     2863.333           42.333          59.333
+soft, drifting        0.700            0.946           0.936        0.812            0.993           0.993     2134.333           42.333          59.000
